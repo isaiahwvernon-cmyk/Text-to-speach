@@ -180,10 +180,10 @@ export async function registerRoutes(
   });
 
   app.put("/api/rooms", (req, res) => {
-    const adminPw = req.headers["x-admin-password"];
-    console.log("[PUT /api/rooms] admin header:", adminPw, "body type:", typeof req.body, "body:", JSON.stringify(req.body));
+    const adminPw = (req.headers["x-admin-password"] as string) || (req.query.pw as string);
+    console.log("[PUT /api/rooms] admin pw present:", !!adminPw, "body type:", typeof req.body, "body:", JSON.stringify(req.body));
     if (adminPw !== ADMIN_PASSWORD) {
-      console.log("[PUT /api/rooms] Unauthorized — password mismatch");
+      console.log("[PUT /api/rooms] Unauthorized — password mismatch, got:", JSON.stringify(adminPw));
       return res.status(401).json({ error: "Unauthorized" });
     }
     const parsed = z.array(roomSchema).safeParse(req.body);

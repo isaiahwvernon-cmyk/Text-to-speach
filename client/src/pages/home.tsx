@@ -40,7 +40,7 @@ async function fetchRoomsFromServer(): Promise<Room[]> {
 }
 
 async function saveRoomsToServer(rooms: Room[]): Promise<void> {
-  const res = await fetch("/api/rooms", {
+  const res = await fetch(`/api/rooms?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
