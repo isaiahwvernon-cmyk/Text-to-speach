@@ -1,0 +1,182 @@
+TOA IP-A1 Speaker Control
+Local Server Setup Notes
+========================================
+
+Goal
+----------------------------------------
+Run the speaker control interface locally on a Windows PC
+and allow other devices on the network to access it.
+
+Example access:
+http://10.0.0.96:5000
+
+
+STEP 1 — Install Node.js
+----------------------------------------
+Install Node.js from:
+
+https://nodejs.org
+
+Verify installation:
+
+node -v
+npm -v
+
+
+STEP 2 — Install Project Dependencies
+----------------------------------------
+Open a terminal in the project folder and run:
+
+npm install
+
+This installs all required packages defined in package.json.
+
+
+STEP 3 — Fix Windows Environment Variable Issue
+----------------------------------------
+Original script (Linux style):
+
+NODE_ENV=development tsx server/index.ts
+
+Windows does not support this syntax.
+
+Fix options:
+
+Option A (recommended)
+Use cross-env in package.json
+
+"dev": "cross-env NODE_ENV=development tsx server/index.ts"
+
+Option B (manual)
+Run:
+
+set NODE_ENV=development
+npx tsx server/index.ts
+
+
+STEP 4 — Fix Server Socket Error
+----------------------------------------
+Original code used container settings intended for Replit:
+
+host: "0.0.0.0"
+reusePort: true
+
+Windows does not support reusePort.
+
+Replace listen block with:
+
+httpServer.listen(port, "0.0.0.0", () => {
+  log(`serving on port ${port}`);
+});
+
+This allows the server to accept connections from the network.
+
+
+STEP 5 — Verify Server Listening
+----------------------------------------
+Run:
+
+netstat -ano | findstr :5000
+
+Correct output should show:
+
+0.0.0.0:5000 LISTENING
+
+If you see:
+
+127.0.0.1:5000
+
+Then the server is restricted to localhost.
+
+
+STEP 6 — Determine Correct LAN Address
+----------------------------------------
+Run:
+
+ipconfig
+
+Example result:
+
+IPv4 Address . . . . . : 10.0.0.96
+
+That becomes the address other devices use:
+
+http://10.0.0.96:5000
+
+
+STEP 7 — Ignore Virtual Network Adapters
+----------------------------------------
+Windows systems may include:
+
+WSL / Hyper-V
+Docker
+VPN
+Virtual adapters
+
+Example incorrect address detected earlier:
+
+172.17.96.1
+
+This address belongs to WSL and is not reachable from other computers.
+
+Server code was updated to ignore adapters containing:
+
+vEthernet
+WSL
+Docker
+VPN
+
+
+STEP 8 — Automatic LAN Address Detection
+----------------------------------------
+Server startup now detects the correct LAN IP and prints:
+
+==========================================
+TOA IP-A1 Speaker Control Server
+==========================================
+
+Local:   http://localhost:5000
+Network: http://10.0.0.96:5000
+
+
+STEP 9 — Launcher Batch Script
+----------------------------------------
+A Windows launcher (.bat file) was created to start the server.
+
+Functions:
+• verifies Node.js is installed
+• installs dependencies if needed
+• starts the server
+• displays access URLs
+
+
+STEP 10 — How to Run the System
+----------------------------------------
+1. Double-click the launcher .bat file
+2. Server starts
+3. Open browser:
+
+Local computer:
+http://localhost:5000
+
+Other computers on network:
+http://10.0.0.96:5000
+
+
+System Status
+----------------------------------------
+Server running on Node.js
+Express backend active
+Vite dev server running
+Network access enabled
+LAN IP auto-detected
+
+
+Future Improvements (Optional)
+----------------------------------------
+• auto-open browser on startup
+• display QR code for tablets
+• package as Windows executable
+• convert to standalone control app
+• add device auto-discovery
+• add login authentication
