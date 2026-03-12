@@ -581,10 +581,13 @@ function ControlPanel({
     } finally { setChangingVolume(false); }
   }, [connection.ipAddress, connection.username, connection.password, toast]);
 
-  const handleSliderChange = useCallback((values: number[]) => {
-    setSliderValue(values[0]);
+  const handleSliderChange = useCallback((value: number[]) => {
+    const newVol = value[0];
+    setSliderValue(newVol);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setVolume(values[0]), 300);
+    debounceRef.current = setTimeout(() => {
+      setVolume(newVol);
+    }, 300);
   }, [setVolume]);
 
   const toggleMute = useCallback(async () => {

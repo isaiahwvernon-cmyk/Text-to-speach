@@ -20,9 +20,13 @@ if not exist node_modules (
     echo.
 )
 
+for /f "tokens=14 delims= " %%i in ('ipconfig ^| findstr /c:"IPv4 Address"') do set IP=%%i
+
 echo Starting server...
 echo.
-echo Open your browser to:  http://localhost:5000
+echo Open your browser to:
+echo http://localhost:5000
+echo http://%IP%:5000
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
