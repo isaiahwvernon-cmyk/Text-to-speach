@@ -52,7 +52,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -61,18 +60,32 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await registerRoutes(httpServer, app);
+  const port = parseInt(process.env.PORT || "5000", 10);
+
+  // Detect LAN IP once — the same value is used in the startup banner
+  // and passed to /api/info so they always agree.
+  const nets = os.networkInterfaces();
+  let lanIP = "localhost";
+  for (const name of Object.keys(nets)) {
+    if (
+      name.toLowerCase().includes("vethernet") ||
+      name.toLowerCase().includes("wsl") ||
+      name.toLowerCase().includes("docker") ||
+      name.toLowerCase().includes("vpn")
+    ) continue;
+    for (const net of nets[name] || []) {
+      if (net.family === "IPv4" && !net.internal) lanIP = net.address;
+    }
+  }
+
+  // Register API routes before Vite/static so they take priority
+  await registerRoutes(httpServer, app, lanIP, port);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
-    }
-
+    if (res.headersSent) return next(err);
     return res.status(status).json({ message });
   });
 
@@ -83,32 +96,7 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-
   httpServer.listen(port, "0.0.0.0", () => {
-
-    const nets = os.networkInterfaces();
-    let lanIP = "localhost";
-
-    for (const name of Object.keys(nets)) {
-
-      // Skip virtual adapters
-      if (
-        name.toLowerCase().includes("vethernet") ||
-        name.toLowerCase().includes("wsl") ||
-        name.toLowerCase().includes("docker") ||
-        name.toLowerCase().includes("vpn")
-      ) {
-        continue;
-      }
-
-      for (const net of nets[name] || []) {
-        if (net.family === "IPv4" && !net.internal) {
-          lanIP = net.address;
-        }
-      }
-    }
-
     console.log("");
     console.log("==========================================");
     console.log(" IP-A1 Volume Controller");
@@ -117,6 +105,5 @@ app.use((req, res, next) => {
     console.log(`Local:   http://localhost:${port}`);
     console.log(`Network: http://${lanIP}:${port}`);
     console.log("");
-
   });
 })();

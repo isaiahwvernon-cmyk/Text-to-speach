@@ -6,23 +6,6 @@ import http from "http";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import os from "os";
-
-function detectLanIP(): string {
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    if (
-      name.toLowerCase().includes("vethernet") ||
-      name.toLowerCase().includes("wsl") ||
-      name.toLowerCase().includes("docker") ||
-      name.toLowerCase().includes("vpn")
-    ) continue;
-    for (const net of nets[name] || []) {
-      if (net.family === "IPv4" && !net.internal) return net.address;
-    }
-  }
-  return "localhost";
-}
 
 const ROOMS_CONFIG_PATH = path.resolve(process.cwd(), "rooms.json");
 const ADMIN_PASSWORD = "IPA1";
@@ -185,11 +168,11 @@ function makeRequest(
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
+  lanIP: string,
+  port: number
 ): Promise<Server> {
   app.get("/api/info", (_req, res) => {
-    const lanIP = detectLanIP();
-    const port = parseInt(process.env.PORT || "5000", 10);
     res.json({
       lanIP,
       port,
