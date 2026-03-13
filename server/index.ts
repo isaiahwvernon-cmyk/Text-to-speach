@@ -111,7 +111,7 @@ app.use((req, res, next) => {
 
     console.log("");
     console.log("==========================================");
-    console.log(" TOA IP-A1 Speaker Control Server");
+    console.log(" IP-A1 Volume Controller");
     console.log("==========================================");
     console.log("");
     console.log(`Local:   http://localhost:${port}`);

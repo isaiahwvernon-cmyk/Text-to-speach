@@ -488,7 +488,7 @@ function RoomList({
       </main>
 
       <footer className="text-center pb-5 px-5 safe-bottom">
-        <p className="text-xs text-[#707372]/60">TOA IP-A1 Speaker Control</p>
+        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
       </footer>
     </div>
   );
@@ -752,7 +752,7 @@ function ControlPanel({
       </main>
 
       <footer className="text-center pb-5 px-5 safe-bottom">
-        <p className="text-xs text-[#707372]/60">TOA IP-A1 Speaker Control</p>
+        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
       </footer>
     </div>
   );

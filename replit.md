@@ -1,7 +1,7 @@
-# TOA IP-A1 Speaker Control Interface
+# IP-A1 Volume Controller
 
 ## Overview
-A web interface for controlling multiple TOA IP-A1 classroom speakers. Teachers can add rooms, name them, and control each speaker's volume from any browser on the school network.
+A web interface for controlling multiple IP-A1 classroom speakers. Teachers can add rooms, name them, and control each speaker's volume from any browser on the school network.
 
 ## Architecture
 - **Frontend**: React + TypeScript with Tailwind CSS and shadcn/ui components
@@ -38,7 +38,7 @@ A web interface for controlling multiple TOA IP-A1 classroom speakers. Teachers 
 - `POST /api/speaker/volume/decrement` - Decrement volume
 - `POST /api/speaker/mute/set` - Set mute/unmute state
 
-## TOA IP-A1 API
+## IP-A1 API
 - Volume: 0 (Mute) to 61 (0 dB), initial: 31 (-30 dB)
 - Auth: HTTP Digest Authentication
 - Endpoints: GET /api/v2/volume/{get_master,set_master,inc_master,dec_master,get_master_mute,set_master_mute}

@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   TOA IP-A1 Speaker Control
+echo   IP-A1 Volume Controller
 echo ==========================================
 echo.
 
@@ -48,13 +48,14 @@ if not exist dist\public\index.html (
 
 echo Starting server...
 echo.
-echo Open your browser to:
-echo   http://localhost:5000
-echo   (The server will also print your LAN address)
+echo The browser will open automatically in a few seconds.
+echo The connect page shows a QR code for other devices.
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
 echo.
+
+start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000/connect"
 
 node dist\index.cjs
 
