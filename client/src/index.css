@@ -196,14 +196,14 @@
 /* ── DSP Hardware Theme ─────────────────────────────── */
 
 .dsp-screen {
-  background-color: #05080f;
+  background-color: #0b1120;
   background-image:
     repeating-linear-gradient(
       0deg,
       transparent 0px,
       transparent 3px,
-      rgba(0, 160, 220, 0.022) 3px,
-      rgba(0, 160, 220, 0.022) 4px
+      rgba(0, 160, 220, 0.028) 3px,
+      rgba(0, 160, 220, 0.028) 4px
     );
 }
 

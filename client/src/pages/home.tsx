@@ -16,19 +16,21 @@ type Tab = "channels" | "matrix" | "presets";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg:       "#04070e",
-  panel:    "#090f1c",
-  raised:   "#0e1826",
-  border:   "#14243a",
-  dim:      "#3a506a",
-  text:     "#7a9ab5",
-  bright:   "#c0d8ee",
+  bg:       "#0b1120",
+  panel:    "#111827",
+  raised:   "#1a2540",
+  border:   "#22344e",
+  dim:      "#4a637d",
+  text:     "#8bafc6",
+  bright:   "#d0e6f4",
   accent:   "#00b4e0",
   monoIn:   "#2878ff",
   stereoIn: "#a040ff",
   monoOut:  "#18c068",
   recOut:   "#f83028",
-  on:       "#ff5820",
+  on:       "#22c55e",   // green = channel ON / active
+  mute:     "#e04040",   // red  = muted / off
+  store:    "#f59e0b",   // amber = preset store-mode warning
 };
 
 // Channel attr codes: 0=monoIn, 1=stereoIn, 2=monoOut, 3=recOut
@@ -132,7 +134,14 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
   return (
     <div
       className="flex flex-col items-center shrink-0 select-none"
-      style={{ width: 76, height: stripH, background: C.panel, borderRight: `1px solid ${C.border}` }}
+      style={{
+        width: 76, height: stripH,
+        background: C.panel,
+        borderRight: `1px solid ${C.border}`,
+        borderRadius: 8,
+        overflow: "hidden",
+        transition: "background 0.2s",
+      }}
     >
       {/* Label band */}
       <div
@@ -140,7 +149,7 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
         style={{
           height: LABEL_H,
           flexShrink: 0,
-          background: color + "18",
+          background: color + "22",
           borderBottom: `1px solid ${color}44`,
           fontSize: 8,
           color,
@@ -234,23 +243,33 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
       {/* ON / MUTE button */}
       <button
         onClick={onToggle}
-        className="w-full flex flex-col items-center justify-center gap-1.5 transition-all"
+        className="w-full flex flex-col items-center justify-center gap-1.5"
         style={{
           height: BTN_H, flexShrink: 0,
-          background: on ? `${C.on}1a` : "#060a14",
-          borderTop: `1px solid ${on ? C.on + "44" : C.border}`,
+          background: on ? `${C.on}22` : `${C.mute}0e`,
+          borderTop: `1px solid ${on ? C.on + "55" : C.mute + "33"}`,
+          transition: "background 0.2s, border-color 0.2s",
         }}
         data-testid={`btn-on-${label}`}
       >
         <div
-          className={on ? "led-on" : ""}
           style={{
             width: 8, height: 8, borderRadius: "50%",
-            background: on ? C.on : "#141e2e",
-            boxShadow: on ? `0 0 5px 2px ${C.on}, 0 0 10px ${C.on}88` : "inset 0 1px 2px #000",
+            background: on ? C.on : C.mute + "88",
+            boxShadow: on
+              ? `0 0 6px 2px ${C.on}bb, 0 0 12px ${C.on}55`
+              : `0 0 4px 1px ${C.mute}55`,
+            transition: "background 0.2s, box-shadow 0.2s",
           }}
         />
-        <span className="font-mono uppercase" style={{ fontSize: 8, letterSpacing: "0.14em", color: on ? C.on : C.dim }}>
+        <span
+          className="font-mono uppercase"
+          style={{
+            fontSize: 8, letterSpacing: "0.14em",
+            color: on ? C.on : C.mute + "99",
+            transition: "color 0.2s",
+          }}
+        >
           {on ? "ON" : "MUTE"}
         </span>
       </button>
@@ -388,7 +407,7 @@ function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: Matr
                       style={{
                         width: 42,
                         height: 32,
-                        background: on ? `${color}22` : "#040810",
+                        background: on ? `${color}22` : C.raised,
                         border: `1px solid ${on ? color + "88" : C.border}`,
                         boxShadow: on ? `0 0 10px ${color}44` : "none",
                       }}
@@ -399,8 +418,9 @@ function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: Matr
                           width: 8,
                           height: 8,
                           borderRadius: "50%",
-                          background: on ? color : "#111d2e",
-                          boxShadow: on ? `0 0 5px 2px ${color}` : "inset 0 1px 2px #000",
+                          background: on ? color : C.border,
+                          boxShadow: on ? `0 0 5px 2px ${color}` : "none",
+                          transition: "background 0.2s, box-shadow 0.2s",
                         }}
                       />
                     </button>
@@ -472,7 +492,7 @@ function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: Matr
                       style={{
                         width: 42,
                         height: 32,
-                        background: on ? `${C.recOut}22` : "#040810",
+                        background: on ? `${C.recOut}22` : C.raised,
                         border: `1px solid ${on ? C.recOut + "88" : C.border}`,
                         boxShadow: on ? `0 0 10px ${C.recOut}44` : "none",
                       }}
@@ -483,8 +503,9 @@ function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: Matr
                           width: 8,
                           height: 8,
                           borderRadius: "50%",
-                          background: on ? C.recOut : "#111d2e",
-                          boxShadow: on ? `0 0 5px 2px ${C.recOut}` : "inset 0 1px 2px #000",
+                          background: on ? C.recOut : C.border,
+                          boxShadow: on ? `0 0 5px 2px ${C.recOut}` : "none",
+                          transition: "background 0.2s, box-shadow 0.2s",
                         }}
                       />
                     </button>
@@ -524,7 +545,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
     }
   }
 
-  const activeColor = mode === "store" ? C.on : C.accent;
+  const activeColor = mode === "store" ? C.store : C.accent;
 
   return (
     <div className="flex flex-col h-full overflow-auto p-4 gap-4">
@@ -534,7 +555,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
         style={{ background: C.panel, border: `1px solid ${C.border}` }}
       >
         {(["load", "store"] as const).map((m) => {
-          const mc = m === "store" ? C.on : C.accent;
+          const mc = m === "store" ? C.store : C.accent;
           return (
             <button
               key={m}
@@ -559,7 +580,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
       {mode === "store" && (
         <div
           className="rounded-xl px-4 py-2.5 text-xs font-mono"
-          style={{ background: `${C.on}0e`, border: `1px solid ${C.on}33`, color: C.on }}
+          style={{ background: `${C.store}0e`, border: `1px solid ${C.store}33`, color: C.store }}
         >
           Tap a slot once to select it, tap again to confirm store.
         </div>
@@ -583,17 +604,17 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
                 background: isActive
                   ? `${activeColor}1e`
                   : isConfirm
-                  ? `${C.on}14`
+                  ? `${C.store}14`
                   : C.panel,
                 border: `1px solid ${
                   isActive  ? activeColor + "77" :
-                  isConfirm ? C.on + "55" :
+                  isConfirm ? C.store + "55" :
                   C.border
                 }`,
                 boxShadow: isActive
                   ? `0 0 20px ${activeColor}33, inset 0 0 24px ${activeColor}08`
                   : isConfirm
-                  ? `0 0 14px ${C.on}22`
+                  ? `0 0 14px ${C.store}22`
                   : "none",
               }}
               data-testid={`btn-preset-${slotNum}`}
@@ -603,7 +624,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
                 style={{
                   fontSize: 24,
                   lineHeight: 1,
-                  color: isActive ? activeColor : isConfirm ? C.on : C.dim,
+                  color: isActive ? activeColor : isConfirm ? C.store : C.dim,
                 }}
               >
                 {slotNum.toString().padStart(2, "0")}
@@ -614,7 +635,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
                     width: 6,
                     height: 6,
                     borderRadius: "50%",
-                    background: isActive ? activeColor : "#0e1a28",
+                    background: isActive ? activeColor : C.raised,
                     boxShadow: isActive ? `0 0 4px 2px ${activeColor}` : "none",
                   }}
                 />
@@ -623,7 +644,7 @@ function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
                   style={{
                     fontSize: 7,
                     letterSpacing: "0.2em",
-                    color: isActive ? activeColor : isConfirm ? C.on : C.dim,
+                    color: isActive ? activeColor : isConfirm ? C.store : C.dim,
                   }}
                 >
                   {isActive ? "ACTIVE" : isConfirm ? "CONFIRM?" : "PRESET"}
@@ -657,7 +678,7 @@ function ConnectForm({ onDemo }: { onDemo: () => void }) {
   }
 
   const inputBase: React.CSSProperties = {
-    background: "#050912",
+    background: C.panel,
     border: `1px solid ${C.border}`,
     borderRadius: 12,
     color: C.bright,
@@ -667,6 +688,7 @@ function ConnectForm({ onDemo }: { onDemo: () => void }) {
     outline: "none",
     width: "100%",
     WebkitAppearance: "none",
+    transition: "border-color 0.2s",
   };
 
   return (
@@ -800,7 +822,7 @@ function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: Mix
   }
 
   const inputBase: React.CSSProperties = {
-    background: "#050912",
+    background: C.panel,
     border: `1px solid ${C.border}`,
     borderRadius: 10,
     color: C.bright,
@@ -809,6 +831,7 @@ function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: Mix
     fontFamily: "monospace",
     outline: "none",
     width: "100%",
+    transition: "border-color 0.2s",
   };
 
   return (
