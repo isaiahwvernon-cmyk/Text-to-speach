@@ -575,6 +575,7 @@ export default function Home() {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("channels");
   const [showSettings, setShowSettings] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
   const [serverInfo, setServerInfo] = useState<{
     lanIP?: string;
     port?: number;
@@ -771,7 +772,7 @@ export default function Home() {
         </div>
       )}
 
-      {!state.connected && !showSettings && (
+      {!state.connected && !showSettings && !demoMode && (
         <div className="flex-1 flex items-center justify-center p-8">
           <div
             className="w-full max-w-sm rounded-2xl p-8"
@@ -793,12 +794,44 @@ export default function Home() {
               </p>
             </div>
             <ConnectForm />
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-px flex-1" style={{ background: "hsl(220 15% 22%)" }} />
+              <span className="text-xs text-gray-600 uppercase tracking-wider">or</span>
+              <div className="h-px flex-1" style={{ background: "hsl(220 15% 22%)" }} />
+            </div>
+            <button
+              onClick={() => setDemoMode(true)}
+              className="w-full mt-4 rounded-xl py-3 text-sm font-semibold transition-all"
+              style={{
+                background: "hsl(220 15% 16%)",
+                color: "#9ca3af",
+                border: "1px solid hsl(220 15% 26%)",
+              }}
+              data-testid="button-demo-mode"
+            >
+              Preview interface (no mixer)
+            </button>
           </div>
         </div>
       )}
 
-      {state.connected && (
+      {(state.connected || demoMode) && (
         <div className="flex flex-col flex-1 overflow-hidden">
+          {demoMode && !state.connected && (
+            <div
+              className="flex items-center justify-between px-4 py-2 text-xs shrink-0"
+              style={{ background: "hsl(40 80% 12%)", borderBottom: "1px solid hsl(40 80% 22%)", color: "hsl(40 90% 65%)" }}
+            >
+              <span>Preview mode — controls are not connected to a real mixer</span>
+              <button
+                onClick={() => setDemoMode(false)}
+                className="flex items-center gap-1 px-2 py-1 rounded hover:opacity-70"
+                style={{ background: "hsl(40 80% 18%)", border: "1px solid hsl(40 80% 28%)" }}
+              >
+                <X size={11} /> Exit preview
+              </button>
+            </div>
+          )}
           <div
             className="flex gap-1 px-4 pt-3 shrink-0"
             style={{ borderBottom: "1px solid hsl(220 15% 18%)" }}
