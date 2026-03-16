@@ -87,9 +87,11 @@ const SCALE_MARKS = [
 
 // ── ChannelStrip ──────────────────────────────────────────────────────────────
 // Fixed heights inside each strip
-const LABEL_H = 22;
-const DB_H    = 20;
-const BTN_H   = 52;
+const LABEL_H  = 22;
+const DB_H     = 20;
+const BTN_H    = 52;
+// Padding at top/bottom of the track so the thumb is never clipped at either extreme
+const FADER_PAD = 14;
 // Chrome above the strip row: app header(46) + tab bar(38) + wrapper iframe overhead(60)
 const OUTER_CHROME = 144;
 // Fader travel: min 140px, max 300px — stays within the viewport and looks clean
@@ -150,44 +152,53 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
 
       {/* Fader + scale + meter — explicit pixel height = faderH */}
       <div className="relative w-full" style={{ height: faderH, flexShrink: 0, overflow: "hidden" }}>
-        {/* Scale marks */}
-        {SCALE_MARKS.map(({ pos, label: ml }) => (
-          <div
-            key={pos}
-            className="absolute flex items-center"
-            style={{
-              left: 0, width: 20,
-              top: `${(1 - pos / 63) * 100}%`,
-              transform: "translateY(-50%)",
-              justifyContent: "flex-end",
-              gap: 2,
-            }}
-          >
-            <span style={{ fontSize: 7, fontFamily: "monospace", lineHeight: 1, color: pos === 53 ? color + "cc" : C.dim }}>
-              {ml}
-            </span>
-            <div style={{ width: pos === 53 ? 5 : 3, height: 1, background: pos === 53 ? color : C.border, opacity: pos === 53 ? 0.7 : 0.4 }} />
-          </div>
-        ))}
+        {/* Scale marks — positioned in px to match the padded track range */}
+        {SCALE_MARKS.map(({ pos, label: ml }) => {
+          const trackRange = faderH - 2 * FADER_PAD;
+          const topPx = FADER_PAD + (1 - pos / 63) * trackRange;
+          return (
+            <div
+              key={pos}
+              className="absolute flex items-center"
+              style={{
+                left: 0, width: 20,
+                top: topPx,
+                transform: "translateY(-50%)",
+                justifyContent: "flex-end",
+                gap: 2,
+              }}
+            >
+              <span style={{ fontSize: 7, fontFamily: "monospace", lineHeight: 1, color: pos === 53 ? color + "cc" : C.dim }}>
+                {ml}
+              </span>
+              <div style={{ width: pos === 53 ? 5 : 3, height: 1, background: pos === 53 ? color : C.border, opacity: pos === 53 ? 0.7 : 0.4 }} />
+            </div>
+          );
+        })}
 
-        {/* 0 dB line */}
+        {/* 0 dB reference line — same px calculation */}
         <div className="absolute pointer-events-none"
-          style={{ left: 20, right: 8, top: `${pct0db}%`, height: 1, background: color, opacity: 0.2 }}
+          style={{
+            left: 20, right: 8,
+            top: FADER_PAD + (1 - 53 / 63) * (faderH - 2 * FADER_PAD),
+            height: 1, background: color, opacity: 0.2,
+          }}
         />
 
-        {/* Rotated slider — width = faderH so the track fills the area */}
-        <div className="absolute" style={{ left: 20, right: 8, top: 0, bottom: 0, overflow: "hidden" }}>
+        {/* Rotated slider — width = track range (faderH minus padding at each end) */}
+        <div className="absolute" style={{ left: 20, right: 8, top: FADER_PAD, bottom: FADER_PAD }}>
           <input
             type="range" min={0} max={63} value={position}
             onChange={(e) => onFader(Number(e.target.value))}
             className="mixer-fader"
-            style={{ width: faderH, height: 44 }}
+            style={{ width: faderH - 2 * FADER_PAD, height: 44 }}
             data-testid={`fader-${label}`}
           />
         </div>
 
         {/* Level meter */}
-        <div className="absolute right-0 rounded-sm overflow-hidden" style={{ top: 8, bottom: 8, width: 5, background: "#030609" }}>
+        <div className="absolute right-0 rounded-sm overflow-hidden"
+          style={{ top: FADER_PAD, bottom: FADER_PAD, width: 5, background: "#030609" }}>
           <div
             className="absolute bottom-0 w-full rounded-sm"
             style={{
