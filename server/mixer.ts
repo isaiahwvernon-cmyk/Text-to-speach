@@ -75,6 +75,10 @@ export class MixerManager extends EventEmitter {
 
     sock.on("data", (data: Buffer) => {
       if (this.socket !== sock) return;
+      // Suppress meter-level responses (0xE6 first byte) to avoid flooding logs
+      if (data[0] !== 0xE6) {
+        console.log(`[Mixer] RAW IN (${data.length}b): ${this._hex(data)}`);
+      }
       this.receiveBuffer = Buffer.concat([this.receiveBuffer, data]);
       this._parseBuffer();
     });
@@ -152,6 +156,10 @@ export class MixerManager extends EventEmitter {
   private _rawSend(data: Buffer): void {
     if (this.socket && !this.socket.destroyed && this.state.connected) {
       try {
+        // Skip keepalive (0xFF) and meter polls (0xE6) to reduce log noise
+        if ((data.length > 1 || data[0] !== 0xFF) && data[0] !== 0xE6) {
+          console.log(`[Mixer] SEND (${data.length}b): ${this._hex(data)}`);
+        }
         this.socket.write(data);
         this.lastSentAt = Date.now();
       } catch (e) {
@@ -275,6 +283,10 @@ export class MixerManager extends EventEmitter {
     }
   }
 
+  private _hex(data: Buffer | number[]): string {
+    return Array.from(data).map(b => "0x" + b.toString(16).padStart(2, "0")).join(" ");
+  }
+
   private _handlePacket(cmd: number, data: Buffer): void {
     let changed = false;
 
@@ -293,7 +305,7 @@ export class MixerManager extends EventEmitter {
           const ver = data.slice(1).toString("ascii").replace(/\0/g, "").trim();
           if (ver) console.log(`[Mixer] Firmware: ${ver}`);
         } else {
-          console.log(`[Mixer] 0xF2 sub=0x${subCode.toString(16).padStart(2,"0")} data=[${Array.from(data).map(b=>"0x"+b.toString(16).padStart(2,"0")).join(",")}]`);
+          console.log(`[Mixer] 0xF2 data: ${this._hex(data)}`);
         }
       }
       return;
@@ -369,6 +381,11 @@ export class MixerManager extends EventEmitter {
         else if (attr === 0x01 && ch < 4) { this.state.stereoInLevel[ch] = level; changed = true; }
         else if (attr === 0x02 && ch < 4) { this.state.monoOutLevel[ch] = level; changed = true; }
       }
+    }
+
+    // Log any packet we don't recognise — helps diagnose protocol issues
+    else {
+      console.log(`[Mixer] UNKNOWN cmd=0x${cmd.toString(16).padStart(2,"0")} data: ${this._hex(data)}`);
     }
 
     if (changed) {
