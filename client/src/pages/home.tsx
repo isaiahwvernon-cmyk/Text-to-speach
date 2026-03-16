@@ -154,8 +154,14 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
       <div className="relative w-full" style={{ height: faderH, flexShrink: 0, overflow: "hidden" }}>
         {/* Scale marks — positioned in px to match the padded track range */}
         {SCALE_MARKS.map(({ pos, label: ml }) => {
-          const trackRange = faderH - 2 * FADER_PAD;
-          const topPx = FADER_PAD + (1 - pos / 63) * trackRange;
+          // The thumb center only travels within [thumbHalf .. trackRange-thumbHalf]
+          // because the browser insets the thumb at both ends.
+          // THUMB_CSS (46px) = CSS width of thumb = visual height after -90° rotation.
+          const THUMB_CSS   = 46;
+          const thumbHalf   = THUMB_CSS / 2;
+          const trackRange  = faderH - 2 * FADER_PAD;
+          const effectiveRange = trackRange - THUMB_CSS;
+          const topPx = FADER_PAD + thumbHalf + (1 - pos / 63) * effectiveRange;
           return (
             <div
               key={pos}
@@ -176,14 +182,17 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
           );
         })}
 
-        {/* 0 dB reference line — same px calculation */}
-        <div className="absolute pointer-events-none"
-          style={{
-            left: 20, right: 8,
-            top: FADER_PAD + (1 - 53 / 63) * (faderH - 2 * FADER_PAD),
-            height: 1, background: color, opacity: 0.2,
-          }}
-        />
+        {/* 0 dB reference line — same inset calculation */}
+        {(() => {
+          const THUMB_CSS = 46;
+          const trackRange = faderH - 2 * FADER_PAD;
+          const top0db = FADER_PAD + THUMB_CSS / 2 + (1 - 53 / 63) * (trackRange - THUMB_CSS);
+          return (
+            <div className="absolute pointer-events-none"
+              style={{ left: 20, right: 8, top: top0db, height: 1, background: color, opacity: 0.25 }}
+            />
+          );
+        })()}
 
         {/* Rotated slider — width = track range (faderH minus padding at each end) */}
         <div className="absolute" style={{ left: 20, right: 8, top: FADER_PAD, bottom: FADER_PAD }}>
