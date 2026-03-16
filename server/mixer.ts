@@ -136,42 +136,69 @@ export class MixerManager extends EventEmitter {
   private _requestAllState(): void {
     const cmds: number[][] = [];
 
-    cmds.push([0xF2, 0x02, 0x01, 0x01]);
-    cmds.push([0xF2, 0x02, 0x00, 0x02]);
+    // System / machine info queries (0xF2)
+    cmds.push([0xF2, 0x02, 0x01, 0x01]); // request machine name
+    cmds.push([0xF2, 0x02, 0x00, 0x02]); // request firmware version
+
+    // Current preset number (0xF0 sub-code 0x71)
     cmds.push([0xF0, 0x02, 0x71, 0x00]);
 
+    // Fader positions (0x11) and on/off (0x12) for all channel types
+    // Mono inputs: attr=0x00, ch 0-7
     for (let ch = 0; ch < 8; ch++) {
       cmds.push([0xF0, 0x03, 0x11, 0x00, ch]);
       cmds.push([0xF0, 0x03, 0x12, 0x00, ch]);
     }
+    // Stereo inputs: attr=0x01, ch 0-1
     for (let ch = 0; ch < 2; ch++) {
       cmds.push([0xF0, 0x03, 0x11, 0x01, ch]);
       cmds.push([0xF0, 0x03, 0x12, 0x01, ch]);
     }
+    // Mono outputs: attr=0x02, ch 0-3
     for (let ch = 0; ch < 4; ch++) {
       cmds.push([0xF0, 0x03, 0x11, 0x02, ch]);
       cmds.push([0xF0, 0x03, 0x12, 0x02, ch]);
     }
+    // Rec outputs: attr=0x03, ch 0-1
     for (let ch = 0; ch < 2; ch++) {
       cmds.push([0xF0, 0x03, 0x11, 0x03, ch]);
       cmds.push([0xF0, 0x03, 0x12, 0x03, ch]);
     }
 
+    // Input matrix routing (0x14) and crosspoint gain (0x15)
+    // Mono sources (attr=0x00): src 0-7, bus 0-3
     for (let src = 0; src < 8; src++) {
       for (let bus = 0; bus < 4; bus++) {
         cmds.push([0xF0, 0x04, 0x14, 0x00, src, bus]);
         cmds.push([0xF0, 0x04, 0x15, 0x00, src, bus]);
       }
     }
+    // Stereo sources (attr=0x01): src 0-1, bus 0-3
     for (let src = 0; src < 2; src++) {
       for (let bus = 0; bus < 4; bus++) {
         cmds.push([0xF0, 0x04, 0x14, 0x01, src, bus]);
         cmds.push([0xF0, 0x04, 0x15, 0x01, src, bus]);
       }
     }
+
+    // Output matrix routing (0x16): bus 0-3 → rec out 0-1 (attr=0x03)
     for (let bus = 0; bus < 4; bus++) {
       cmds.push([0xF0, 0x04, 0x16, bus, 0x03, 0x00]);
       cmds.push([0xF0, 0x04, 0x16, bus, 0x03, 0x01]);
+    }
+
+    // Level meter requests (0xE6 sub-code 0x01 = request all meters)
+    // Mono inputs
+    for (let ch = 0; ch < 8; ch++) {
+      cmds.push([0xE6, 0x03, 0x01, 0x00, ch]);
+    }
+    // Stereo inputs
+    for (let ch = 0; ch < 2; ch++) {
+      cmds.push([0xE6, 0x03, 0x01, 0x01, ch]);
+    }
+    // Mono outputs
+    for (let ch = 0; ch < 4; ch++) {
+      cmds.push([0xE6, 0x03, 0x01, 0x02, ch]);
     }
 
     let delay = 0;
@@ -207,6 +234,23 @@ export class MixerManager extends EventEmitter {
 
     if (cmd === 0xDF && data.length >= 1 && data[0] === 0x01) {
       console.log("[Mixer] Connection establishment acknowledged");
+      return;
+    }
+
+    // System info / machine name / firmware response
+    if (cmd === 0xF2) {
+      if (data.length >= 1) {
+        const subCode = data[0];
+        if (subCode === 0x01 && data.length > 1) {
+          const name = data.slice(1).toString("ascii").replace(/\0/g, "").trim();
+          if (name) console.log(`[Mixer] Machine name: ${name}`);
+        } else if (subCode === 0x00 && data.length > 1) {
+          const ver = data.slice(1).toString("ascii").replace(/\0/g, "").trim();
+          if (ver) console.log(`[Mixer] Firmware: ${ver}`);
+        } else {
+          console.log(`[Mixer] 0xF2 subCode=0x${subCode.toString(16).padStart(2,"0")} data=[${Array.from(data).map(b=>"0x"+b.toString(16).padStart(2,"0")).join(",")}]`);
+        }
+      }
       return;
     }
 
