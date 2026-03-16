@@ -1,1423 +1,1256 @@
-import { useState, useCallback, useEffect } from "react";
-import { useMixerWs } from "@/hooks/use-mixer";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
-  defaultMixerState,
-  type MixerState,
-  faderPositionToDb,
-  crosspointValueToDb,
-  formatDb,
-} from "@shared/schema";
+  Volume2, VolumeX, Volume1, Minus, Plus,
+  Speaker, AlertCircle, ArrowLeft, Trash2, PlusCircle, Home as HomeIcon,
+  Pencil, X, Lock, Unlock, Search, RefreshCw, CloudOff, Link2, Unlink,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, X, Radio, Eye, RefreshCw } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
-import { QRCodeSVG } from "qrcode.react";
+import type { Room, Speaker as SpeakerType, SpeakerStatus } from "@shared/schema";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-type Tab = "channels" | "matrix" | "presets";
+const ADMIN_PASSWORD = "IPA1";
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const C = {
-  bg:       "#0b1120",
-  panel:    "#111827",
-  raised:   "#1a2540",
-  border:   "#22344e",
-  dim:      "#4a637d",
-  text:     "#8bafc6",
-  bright:   "#d0e6f4",
-  accent:   "#00b4e0",
-  monoIn:   "#2878ff",
-  stereoIn: "#a040ff",
-  monoOut:  "#18c068",
-  recOut:   "#f83028",
-  on:       "#22c55e",   // green = channel ON / active
-  mute:     "#e04040",   // red  = muted / off
-  store:    "#f59e0b",   // amber = preset store-mode warning
-};
-
-// Channel attr codes: 0=monoIn, 1=stereoIn, 2=monoOut, 3=recOut
-const ATTR = { monoIn: 0, stereoIn: 1, monoOut: 2, recOut: 3 } as const;
-
-const CH_DEFS = [
-  ...Array.from({ length: 8 }, (_, i) => ({
-    label: `IN ${i + 1}`, attr: ATTR.monoIn, ch: i, color: C.monoIn,
-    getPos: (s: MixerState) => s.monoInFader[i] ?? 53,
-    getOn:  (s: MixerState) => s.monoInOn[i]  ?? true,
-    getLvl: (s: MixerState) => s.monoInLevel[i] ?? 0,
-    matIdx: i,
-  })),
-  ...Array.from({ length: 2 }, (_, i) => ({
-    label: `ST ${i + 1}`, attr: ATTR.stereoIn, ch: i, color: C.stereoIn,
-    getPos: (s: MixerState) => s.stereoInFader[i] ?? 53,
-    getOn:  (s: MixerState) => s.stereoInOn[i]  ?? true,
-    getLvl: (s: MixerState) => s.stereoInLevel[i * 2] ?? 0,
-    matIdx: 8 + i,
-  })),
-  ...Array.from({ length: 4 }, (_, i) => ({
-    label: `OUT ${i + 1}`, attr: ATTR.monoOut, ch: i, color: C.monoOut,
-    getPos: (s: MixerState) => s.monoOutFader[i] ?? 53,
-    getOn:  (s: MixerState) => s.monoOutOn[i]  ?? true,
-    getLvl: (s: MixerState) => s.monoOutLevel[i] ?? 0,
-    matIdx: -1,
-  })),
-  ...Array.from({ length: 2 }, (_, i) => ({
-    label: `REC ${i + 1}`, attr: ATTR.recOut, ch: i, color: C.recOut,
-    getPos: (s: MixerState) => s.recOutFader[i] ?? 53,
-    getOn:  (s: MixerState) => s.recOutOn[i]  ?? true,
-    getLvl: (_: MixerState) => 0,
-    matIdx: -1,
-  })),
+const VOLUME_PRESETS = [
+  { label: "Low", value: 15, icon: Volume1 },
+  { label: "Normal", value: 31, icon: Volume2 },
+  { label: "Loud", value: 48, icon: Speaker },
 ];
 
-const MATRIX_INPUTS = [
-  ...Array.from({ length: 8 }, (_, i) => ({
-    label: `IN ${i + 1}`, color: C.monoIn, srcAttr: 0, srcCh: i, matIdx: i,
-  })),
-  ...Array.from({ length: 2 }, (_, i) => ({
-    label: `ST ${i + 1}`, color: C.stereoIn, srcAttr: 1, srcCh: i, matIdx: 8 + i,
-  })),
-];
-
-
-const SCALE_MARKS = [
-  { pos: 63, label: "+10" },
-  { pos: 58, label: "+6"  },
-  { pos: 53, label: "0"   },
-  { pos: 43, label: "-10" },
-  { pos: 33, label: "-20" },
-  { pos: 18, label: "-40" },
-  { pos: 0,  label: "∞"   },
-];
-
-// ── ChannelStrip ──────────────────────────────────────────────────────────────
-// Fixed heights inside each strip
-const LABEL_H  = 22;
-const DB_H     = 20;
-const BTN_H    = 52;
-// Padding at top/bottom of the track so the thumb is never clipped at either extreme
-const FADER_PAD = 14;
-// Chrome above the strip row: app header(46) + tab bar(38) + wrapper iframe overhead(60)
-const OUTER_CHROME = 144;
-// Fader travel: min 140px, max 300px — stays within the viewport and looks clean
-const FADER_MIN = 140;
-const FADER_MAX = 300;
-
-function useFaderH(): number {
-  const calc = () => Math.max(FADER_MIN, Math.min(FADER_MAX,
-    window.innerHeight - OUTER_CHROME - LABEL_H - DB_H - BTN_H
-  ));
-  const [h, setH] = useState(calc);
-  useEffect(() => {
-    const onResize = () => setH(calc());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return h;
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-// Returns the server's LAN URL — always resolves (never stays empty indefinitely)
-function useServerUrl(): string {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    fetch("/api/info")
-      .then((r) => r.json())
-      .then((d: { lanIP?: string; port?: number }) => {
-        const port = d.port ?? 5000;
-        const lan = d.lanIP ?? "";
-        if (lan && lan !== "localhost" && lan !== "127.0.0.1") {
-          setUrl(`http://${lan}:${port}`);
-        } else {
-          setUrl(`http://${window.location.hostname}:${port}`);
-        }
-      })
-      .catch(() => setUrl(window.location.origin));
-  }, []);
-  return url;
+function loadRoomsFromCache(): Room[] {
+  try {
+    const saved = localStorage.getItem("toa_rooms");
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    // Migrate old flat-format from localStorage cache
+    return parsed.map((r: any) => {
+      if (r.ipAddress && !r.speakers) {
+        return {
+          id: r.id,
+          name: r.name,
+          syncMode: true,
+          speakers: [{ id: generateId(), label: "Speaker 1", ipAddress: r.ipAddress, username: r.username, password: r.password }],
+        };
+      }
+      return r;
+    });
+  } catch { return []; }
 }
 
-// Reusable QR code card shown on connect screen and settings
-function QRCard({ url }: { url: string }) {
-  if (!url) return null;
-  return (
-    <div
-      className="rounded-2xl p-4 flex flex-col items-center gap-3"
-      style={{ background: C.panel, border: `1px solid ${C.border}` }}
-    >
-      <span className="font-mono uppercase self-start" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}>
-        Open on tablet / phone
-      </span>
-      <div className="rounded-xl p-2" style={{ background: "#ffffff" }}>
-        <QRCodeSVG value={url} size={160} bgColor="#ffffff" fgColor="#0b1120" level="M" />
-      </div>
-      <span
-        className="font-mono text-center select-all"
-        style={{ fontSize: 11, color: C.accent, letterSpacing: "0.04em" }}
-        data-testid="text-server-url"
-      >
-        {url}
-      </span>
-      <span className="font-mono text-center" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.08em" }}>
-        Scan or type this address on any device on the same Wi-Fi network.
-      </span>
-    </div>
+function saveRoomsToCache(rooms: Room[]) {
+  localStorage.setItem("toa_rooms", JSON.stringify(rooms));
+}
+
+async function fetchRoomsFromServer(): Promise<Room[]> {
+  const res = await fetch("/api/rooms");
+  if (!res.ok) throw new Error("Failed to load config");
+  return res.json();
+}
+
+async function saveRoomsToServer(rooms: Room[]): Promise<void> {
+  const res = await fetch(`/api/rooms?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-admin-password": ADMIN_PASSWORD },
+    body: JSON.stringify(rooms),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${body || "no details"}`);
+  }
+}
+
+// ─── Input field styling ─────────────────────────────────────────────────────
+const INPUT_CLS = "w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]";
+
+// ─── Blank speaker factory ────────────────────────────────────────────────────
+function blankSpeaker(index: number): SpeakerType {
+  return { id: generateId(), label: `Speaker ${index + 1}`, ipAddress: "", username: "", password: "" };
+}
+
+// ─── AddRoomDialog ────────────────────────────────────────────────────────────
+function AddRoomDialog({
+  onAdd,
+  onCancel,
+  editRoom,
+}: {
+  onAdd: (room: Room) => void;
+  onCancel: () => void;
+  editRoom?: Room | null;
+}) {
+  const [name, setName] = useState(editRoom?.name || "");
+  const [speakers, setSpeakers] = useState<SpeakerType[]>(
+    editRoom?.speakers?.length ? editRoom.speakers : [blankSpeaker(0)]
   );
-}
 
-interface StripProps {
-  label: string;
-  color: string;
-  position: number;
-  on: boolean;
-  level: number;
-  faderH: number;
-  onFader: (v: number) => void;
-  onToggle: () => void;
-}
+  const updateSpeaker = (index: number, field: keyof SpeakerType, value: string) => {
+    setSpeakers((prev) => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+  };
 
-function ChannelStrip({ label, color, position, on, level, faderH, onFader, onToggle }: StripProps) {
-  const db = faderPositionToDb(position);
-  const dbStr = formatDb(db);
-  const pct0db = (1 - 53 / 63) * 100;
-  const stripH = LABEL_H + faderH + DB_H + BTN_H;
+  const addSpeaker = () => setSpeakers((prev) => [...prev, blankSpeaker(prev.length)]);
+
+  const removeSpeaker = (index: number) =>
+    setSpeakers((prev) => prev.filter((_, i) => i !== index));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onAdd({
+      id: editRoom?.id || generateId(),
+      name: name.trim(),
+      speakers,
+      syncMode: editRoom?.syncMode ?? true,
+    });
+  };
 
   return (
     <div
-      className="flex flex-col items-center shrink-0 select-none"
-      style={{
-        width: 76, height: stripH,
-        background: C.panel,
-        borderRight: `1px solid ${C.border}`,
-        borderRadius: 8,
-        overflow: "hidden",
-        transition: "background 0.2s",
-      }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onCancel}
     >
-      {/* Label band */}
-      <div
-        className="w-full flex items-center justify-center font-mono uppercase"
-        style={{
-          height: LABEL_H,
-          flexShrink: 0,
-          background: color + "22",
-          borderBottom: `1px solid ${color}44`,
-          fontSize: 8,
-          color,
-          letterSpacing: "0.2em",
-        }}
+      <Card
+        className="w-full sm:max-w-md border-0 shadow-2xl bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
       >
-        {label}
-      </div>
-
-      {/* Fader + scale + meter — explicit pixel height = faderH */}
-      <div className="relative w-full" style={{ height: faderH, flexShrink: 0, overflow: "hidden" }}>
-        {/* Scale marks — positioned in px to match the padded track range */}
-        {SCALE_MARKS.map(({ pos, label: ml }) => {
-          // The thumb center only travels within [thumbHalf .. trackRange-thumbHalf]
-          // because the browser insets the thumb at both ends.
-          // THUMB_CSS (46px) = CSS width of thumb = visual height after -90° rotation.
-          const THUMB_CSS   = 46;
-          const thumbHalf   = THUMB_CSS / 2;
-          const trackRange  = faderH - 2 * FADER_PAD;
-          const effectiveRange = trackRange - THUMB_CSS;
-          const topPx = FADER_PAD + thumbHalf + (1 - pos / 63) * effectiveRange;
-          return (
-            <div
-              key={pos}
-              className="absolute flex items-center"
-              style={{
-                left: 0, width: 20,
-                top: topPx,
-                transform: "translateY(-50%)",
-                justifyContent: "flex-end",
-                gap: 2,
-              }}
+        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mt-3 sm:hidden" />
+        <CardContent className="p-6 pt-5 sm:pt-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2
+              className="text-xl font-bold text-slate-900 dark:text-white"
+              data-testid="text-dialog-title"
             >
-              <span style={{ fontSize: 7, fontFamily: "monospace", lineHeight: 1, color: pos === 53 ? color + "cc" : C.dim }}>
-                {ml}
-              </span>
-              <div style={{ width: pos === 53 ? 5 : 3, height: 1, background: pos === 53 ? color : C.border, opacity: pos === 53 ? 0.7 : 0.4 }} />
-            </div>
-          );
-        })}
-
-        {/* 0 dB reference line — same inset calculation */}
-        {(() => {
-          const THUMB_CSS = 46;
-          const trackRange = faderH - 2 * FADER_PAD;
-          const top0db = FADER_PAD + THUMB_CSS / 2 + (1 - 53 / 63) * (trackRange - THUMB_CSS);
-          return (
-            <div className="absolute pointer-events-none"
-              style={{ left: 20, right: 8, top: top0db, height: 1, background: color, opacity: 0.25 }}
-            />
-          );
-        })()}
-
-        {/* Rotated slider — width = track range (faderH minus padding at each end) */}
-        <div className="absolute" style={{ left: 20, right: 8, top: FADER_PAD, bottom: FADER_PAD }}>
-          <input
-            type="range" min={0} max={63} value={position}
-            onChange={(e) => onFader(Number(e.target.value))}
-            className="mixer-fader"
-            style={{ width: faderH - 2 * FADER_PAD, height: 44 }}
-            data-testid={`fader-${label}`}
-          />
-        </div>
-
-      </div>
-
-      {/* dB readout */}
-      <div
-        className="font-mono text-center w-full"
-        style={{ height: DB_H, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, color: on ? C.bright : C.dim, letterSpacing: "0.04em" }}
-      >
-        {dbStr}
-      </div>
-
-      {/* ON / MUTE button */}
-      <button
-        onClick={onToggle}
-        className="w-full flex flex-col items-center justify-center gap-1.5"
-        style={{
-          height: BTN_H, flexShrink: 0,
-          background: on ? `${C.on}22` : `${C.mute}0e`,
-          borderTop: `1px solid ${on ? C.on + "55" : C.mute + "33"}`,
-          transition: "background 0.2s, border-color 0.2s",
-        }}
-        data-testid={`btn-on-${label}`}
-      >
-        <div
-          style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: on ? C.on : C.mute + "88",
-            boxShadow: on
-              ? `0 0 6px 2px ${C.on}bb, 0 0 12px ${C.on}55`
-              : `0 0 4px 1px ${C.mute}55`,
-            transition: "background 0.2s, box-shadow 0.2s",
-          }}
-        />
-        <span
-          className="font-mono uppercase"
-          style={{
-            fontSize: 8, letterSpacing: "0.14em",
-            color: on ? C.on : C.mute + "99",
-            transition: "color 0.2s",
-          }}
-        >
-          {on ? "ON" : "MUTE"}
-        </span>
-      </button>
-    </div>
-  );
-}
-
-// ── MatrixGrid ────────────────────────────────────────────────────────────────
-interface MatrixGridProps {
-  mixState: MixerState;
-  onToggleInput: (srcAttr: number, srcCh: number, bus: number, cur: boolean) => void;
-  onToggleOutput: (bus: number, dstCh: number, cur: boolean) => void;
-  onSetGain: (srcAttr: number, srcCh: number, bus: number, value: number) => void;
-}
-
-const GAIN_OPTS = [
-  { value: 70, label: "+10" },
-  { value: 60, label: "+4"  },
-  { value: 46, label: "0"   },
-  { value: 36, label: "-6"  },
-  { value: 26, label: "-16" },
-  { value: 6,  label: "-36" },
-  { value: 0,  label: "–∞"  },
-];
-
-function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: MatrixGridProps) {
-  const [gainEdit, setGainEdit] = useState<{ srcAttr: number; srcCh: number; matIdx: number; bus: number } | null>(null);
-
-  const BUS_LABELS = ["OUT 1", "OUT 2", "OUT 3", "OUT 4"];
-  const OUT_LABELS  = ["OUT 1", "OUT 2", "OUT 3", "OUT 4"];
-  const REC_LABELS  = ["REC L", "REC R"];
-
-  return (
-    <div className="flex flex-col h-full overflow-auto p-4 gap-5">
-      {/* Gain editor sheet */}
-      {gainEdit !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(0,0,0,0.75)" }}
-          onClick={() => setGainEdit(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-t-2xl p-5"
-            style={{ background: C.raised, border: `1px solid ${C.border}` }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.accent }}>
-                {MATRIX_INPUTS[gainEdit.matIdx]?.label} → {BUS_LABELS[gainEdit.bus]} Gain
-              </span>
-              <button onClick={() => setGainEdit(null)}><X size={16} color={C.dim} /></button>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {GAIN_OPTS.map(({ value, label }) => {
-                const cur = mixState.inputMatrixGain[gainEdit.matIdx]?.[gainEdit.bus] ?? 46;
-                const active = cur === value;
-                return (
-                  <button
-                    key={value}
-                    onClick={() => {
-                      onSetGain(gainEdit.srcAttr, gainEdit.srcCh, gainEdit.bus, value);
-                      setGainEdit(null);
-                    }}
-                    className="rounded-xl py-3 font-mono text-sm transition-all"
-                    style={{
-                      background: active ? `${C.accent}28` : C.panel,
-                      border: `1px solid ${active ? C.accent : C.border}`,
-                      color: active ? C.accent : C.text,
-                      boxShadow: active ? `0 0 10px ${C.accent}44` : "none",
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Input → Bus section */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <div style={{ width: 2, height: 14, background: C.accent, borderRadius: 1 }} />
-          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.accent }}>
-            Input → Mix Bus
-          </span>
-        </div>
-
-        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.panel }}>
-          {/* Bus header row */}
-          <div className="flex" style={{ borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ width: 76, minWidth: 76 }} />
-            {BUS_LABELS.map((b, bi) => (
-              <div
-                key={bi}
-                className="flex-1 text-center font-mono py-2 uppercase"
-                style={{ fontSize: 9, color: C.accent, letterSpacing: "0.15em", borderLeft: `1px solid ${C.border}` }}
-              >
-                {b}
-              </div>
-            ))}
+              {editRoom ? "Edit Room" : "Add Room"}
+            </h2>
+            <button
+              onClick={onCancel}
+              className="p-2 rounded-xl text-[#707372] hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              data-testid="button-dialog-close"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          {MATRIX_INPUTS.map(({ label, color, srcAttr, srcCh, matIdx }) => (
-            <div
-              key={matIdx}
-              className="flex"
-              style={{ borderBottom: `1px solid ${C.border}` }}
-            >
-              {/* Source label */}
-              <div
-                className="flex items-center gap-1.5 px-2 font-mono"
-                style={{ width: 76, minWidth: 76, fontSize: 9, color, borderRight: `1px solid ${C.border}` }}
-              >
-                <div style={{ width: 3, height: 14, background: color, borderRadius: 2, opacity: 0.7 }} />
-                {label}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Room name */}
+            <div>
+              <label className="block text-sm font-medium text-[#707372] dark:text-slate-300 mb-2">
+                Room Name
+              </label>
+              <input
+                data-testid="input-room-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Room 101, Science Lab"
+                className={INPUT_CLS}
+                required
+                autoFocus
+              />
+            </div>
+
+            {/* Speakers */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-[#707372] dark:text-slate-300">
+                  Speakers
+                  {speakers.length > 1 && (
+                    <span className="ml-2 text-xs bg-[#FF8200]/10 text-[#FF8200] px-2 py-0.5 rounded-full font-semibold">
+                      {speakers.length}
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={addSpeaker}
+                  className="flex items-center gap-1.5 text-sm text-[#FF8200] hover:text-[#e67400] font-medium transition-colors"
+                  data-testid="button-add-speaker"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Add Speaker
+                </button>
               </div>
 
-              {/* Bus toggle cells */}
-              {[0, 1, 2, 3].map((bus) => {
-                const on = mixState.inputMatrix[matIdx]?.[bus] === true;
-                const gainVal = mixState.inputMatrixGain[matIdx]?.[bus] ?? 46;
-                const gainDb = crosspointValueToDb(gainVal);
-                const gainStr = gainDb === 0 ? "" : formatDb(gainDb);
-                return (
-                  <div
-                    key={bus}
-                    className="flex-1 flex flex-col items-center justify-center py-2 gap-1"
-                    style={{ borderLeft: `1px solid ${C.border}`, minHeight: 56 }}
-                  >
-                    <button
-                      onClick={() => onToggleInput(srcAttr, srcCh, bus, on)}
-                      className="rounded-lg transition-all flex items-center justify-center"
-                      style={{
-                        width: 42,
-                        height: 32,
-                        background: on ? `${color}22` : C.raised,
-                        border: `1px solid ${on ? color + "88" : C.border}`,
-                        boxShadow: on ? `0 0 10px ${color}44` : "none",
-                      }}
-                      data-testid={`matrix-in-${matIdx}-${bus}`}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: on ? color : C.border,
-                          boxShadow: on ? `0 0 5px 2px ${color}` : "none",
-                          transition: "background 0.2s, box-shadow 0.2s",
-                        }}
+              {speakers.map((sp, idx) => (
+                <div
+                  key={sp.id}
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-3 bg-slate-50/50 dark:bg-slate-800/40"
+                  data-testid={`speaker-entry-${idx}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-[#FF8200] flex items-center justify-center">
+                        <Speaker className="w-3.5 h-3.5 text-white" />
+                      </div>
+                      <input
+                        type="text"
+                        value={sp.label}
+                        onChange={(e) => updateSpeaker(idx, "label", e.target.value)}
+                        placeholder={`Speaker ${idx + 1}`}
+                        className="text-sm font-semibold text-slate-800 dark:text-slate-200 bg-transparent border-none outline-none w-32 focus:ring-0"
+                        data-testid={`input-speaker-label-${idx}`}
                       />
-                    </button>
-                    {on && gainStr && (
+                    </div>
+                    {speakers.length > 1 && (
                       <button
-                        onClick={() => setGainEdit({ srcAttr, srcCh, matIdx, bus })}
-                        className="font-mono"
-                        style={{ fontSize: 8, color: `${color}bb`, lineHeight: 1 }}
+                        type="button"
+                        onClick={() => removeSpeaker(idx)}
+                        className="p-1.5 rounded-lg text-[#707372] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                        data-testid={`button-remove-speaker-${idx}`}
                       >
-                        {gainStr}
+                        <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Output → Rec section */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <div style={{ width: 2, height: 14, background: C.monoOut, borderRadius: 1 }} />
-          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.monoOut }}>
-            Output → Rec Bus
-          </span>
-        </div>
-
-        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.panel }}>
-          {/* Output header row */}
-          <div className="flex" style={{ borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ width: 76, minWidth: 76 }} />
-            {OUT_LABELS.map((b, bi) => (
-              <div
-                key={bi}
-                className="flex-1 text-center font-mono py-2 uppercase"
-                style={{ fontSize: 9, color: C.monoOut, letterSpacing: "0.15em", borderLeft: `1px solid ${C.border}` }}
-              >
-                {b}
-              </div>
-            ))}
-          </div>
-
-          {REC_LABELS.map((rowLabel, dstCh) => (
-            <div
-              key={dstCh}
-              className="flex"
-              style={{ borderBottom: dstCh < 1 ? `1px solid ${C.border}` : "none" }}
-            >
-              <div
-                className="flex items-center gap-1.5 px-2 font-mono"
-                style={{ width: 76, minWidth: 76, fontSize: 9, color: C.recOut, borderRight: `1px solid ${C.border}` }}
-              >
-                <div style={{ width: 3, height: 14, background: C.recOut, borderRadius: 2, opacity: 0.7 }} />
-                {rowLabel}
-              </div>
-              {[0, 1, 2, 3].map((bus) => {
-                const on = mixState.outputMatrix[bus]?.[dstCh] === true;
-                return (
-                  <div
-                    key={bus}
-                    className="flex-1 flex items-center justify-center py-3"
-                    style={{ borderLeft: `1px solid ${C.border}` }}
-                  >
-                    <button
-                      onClick={() => onToggleOutput(bus, dstCh, on)}
-                      className="rounded-lg transition-all flex items-center justify-center"
-                      style={{
-                        width: 42,
-                        height: 32,
-                        background: on ? `${C.recOut}22` : C.raised,
-                        border: `1px solid ${on ? C.recOut + "88" : C.border}`,
-                        boxShadow: on ? `0 0 10px ${C.recOut}44` : "none",
-                      }}
-                      data-testid={`matrix-out-${dstCh}-${bus}`}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: on ? C.recOut : C.border,
-                          boxShadow: on ? `0 0 5px 2px ${C.recOut}` : "none",
-                          transition: "background 0.2s, box-shadow 0.2s",
-                        }}
-                      />
-                    </button>
+                  <div>
+                    <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
+                      IP Address
+                    </label>
+                    <input
+                      data-testid={`input-speaker-ip-${idx}`}
+                      type="text"
+                      value={sp.ipAddress}
+                      onChange={(e) => updateSpeaker(idx, "ipAddress", e.target.value)}
+                      placeholder="192.168.1.100"
+                      className={INPUT_CLS}
+                      required
+                    />
                   </div>
-                );
-              })}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
+                        Username
+                      </label>
+                      <input
+                        data-testid={`input-speaker-username-${idx}`}
+                        type="text"
+                        value={sp.username}
+                        onChange={(e) => updateSpeaker(idx, "username", e.target.value)}
+                        placeholder="admin"
+                        className={INPUT_CLS}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
+                        Password
+                      </label>
+                      <input
+                        data-testid={`input-speaker-password-${idx}`}
+                        type="password"
+                        value={sp.password}
+                        onChange={(e) => updateSpeaker(idx, "password", e.target.value)}
+                        placeholder="••••••"
+                        className={INPUT_CLS}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── PresetsPanel ──────────────────────────────────────────────────────────────
-interface PresetsPanelProps {
-  currentPreset: number;
-  onLoad: (preset: number) => void;
-  onStore: (preset: number) => void;
-}
-
-function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
-  const [mode, setMode] = useState<"load" | "store">("load");
-  const [confirm, setConfirm] = useState<number | null>(null);
-
-  function handleTap(preset: number) {
-    if (mode === "load") {
-      onLoad(preset);
-    } else {
-      if (confirm === preset) {
-        onStore(preset);
-        setConfirm(null);
-      } else {
-        setConfirm(preset);
-        setTimeout(() => setConfirm(null), 2000);
-      }
-    }
-  }
-
-  const activeColor = mode === "store" ? C.store : C.accent;
-
-  return (
-    <div className="flex flex-col h-full overflow-auto p-4 gap-4">
-      {/* Mode toggle */}
-      <div
-        className="flex rounded-2xl p-1 gap-1 self-start"
-        style={{ background: C.panel, border: `1px solid ${C.border}` }}
-      >
-        {(["load", "store"] as const).map((m) => {
-          const mc = m === "store" ? C.store : C.accent;
-          return (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setConfirm(null); }}
-              className="rounded-xl px-6 py-2 font-mono uppercase tracking-widest transition-all"
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.2em",
-                background: mode === m ? `${mc}1e` : "transparent",
-                color: mode === m ? mc : C.dim,
-                border: `1px solid ${mode === m ? mc + "55" : "transparent"}`,
-                boxShadow: mode === m ? `0 0 12px ${mc}22` : "none",
-              }}
-              data-testid={`btn-mode-${m}`}
-            >
-              {m === "load" ? "▶ Load" : "● Store"}
-            </button>
-          );
-        })}
-      </div>
-
-      {mode === "store" && (
-        <div
-          className="rounded-xl px-4 py-2.5 text-xs font-mono"
-          style={{ background: `${C.store}0e`, border: `1px solid ${C.store}33`, color: C.store }}
-        >
-          Tap a slot once to select it, tap again to confirm store.
-        </div>
-      )}
-
-      {/* 4 × 4 grid */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        {Array.from({ length: 16 }, (_, i) => {
-          const preset = i;          // 0-indexed sent to API
-          const slotNum = i + 1;     // 1-indexed shown to user
-          const isActive  = currentPreset === preset;
-          const isConfirm = confirm === preset;
-
-          return (
-            <button
-              key={preset}
-              onClick={() => handleTap(preset)}
-              className="rounded-2xl flex flex-col items-center justify-center gap-2 transition-all active:scale-95"
-              style={{
-                height: 84,
-                background: isActive
-                  ? `${activeColor}1e`
-                  : isConfirm
-                  ? `${C.store}14`
-                  : C.panel,
-                border: `1px solid ${
-                  isActive  ? activeColor + "77" :
-                  isConfirm ? C.store + "55" :
-                  C.border
-                }`,
-                boxShadow: isActive
-                  ? `0 0 20px ${activeColor}33, inset 0 0 24px ${activeColor}08`
-                  : isConfirm
-                  ? `0 0 14px ${C.store}22`
-                  : "none",
-              }}
-              data-testid={`btn-preset-${slotNum}`}
-            >
-              <span
-                className="font-mono font-bold tabular-nums"
-                style={{
-                  fontSize: 24,
-                  lineHeight: 1,
-                  color: isActive ? activeColor : isConfirm ? C.store : C.dim,
-                }}
+            <div className="flex gap-3 pt-2 pb-2 safe-bottom">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                className="flex-1 h-14 rounded-xl font-medium text-base"
+                data-testid="button-dialog-cancel"
               >
-                {slotNum.toString().padStart(2, "0")}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <div
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: isActive ? activeColor : C.raised,
-                    boxShadow: isActive ? `0 0 4px 2px ${activeColor}` : "none",
-                  }}
-                />
-                <span
-                  className="font-mono uppercase"
-                  style={{
-                    fontSize: 7,
-                    letterSpacing: "0.2em",
-                    color: isActive ? activeColor : isConfirm ? C.store : C.dim,
-                  }}
-                >
-                  {isActive ? "ACTIVE" : isConfirm ? "CONFIRM?" : "PRESET"}
-                </span>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                data-testid="button-dialog-save"
+                className="flex-1 h-14 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base"
+              >
+                {editRoom ? "Save Changes" : "Add Room"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── AdminPasswordDialog ──────────────────────────────────────────────────────
+function AdminPasswordDialog({ onUnlock, onCancel }: { onUnlock: () => void; onCancel: () => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) { onUnlock(); }
+    else { setError(true); setPassword(""); }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <Card
+        className="w-full sm:max-w-sm border-0 shadow-2xl bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mt-3 sm:hidden" />
+        <CardContent className="p-6 pt-5 sm:pt-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FF8200] flex items-center justify-center text-white">
+                <Lock className="w-5 h-5" />
               </div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white" data-testid="text-admin-dialog-title">
+                Admin Access
+              </h2>
+            </div>
+            <button
+              onClick={onCancel}
+              className="p-2 rounded-xl text-[#707372] hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              data-testid="button-admin-dialog-close"
+            >
+              <X className="w-5 h-5" />
             </button>
-          );
-        })}
-      </div>
+          </div>
+          <p className="text-sm text-[#707372] dark:text-slate-400 mb-4">Enter the admin password to manage rooms</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <input
+                data-testid="input-admin-password"
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(false); }}
+                placeholder="Enter password"
+                className={`w-full px-4 py-3.5 rounded-xl border ${error ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900" : "border-slate-200 dark:border-slate-700"} bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]`}
+                required
+                autoFocus
+              />
+              {error && <p className="text-sm text-red-500 mt-2" data-testid="text-admin-error">Incorrect password</p>}
+            </div>
+            <div className="flex gap-3 pb-2 safe-bottom">
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1 h-14 rounded-xl font-medium text-base" data-testid="button-admin-cancel">
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="button-admin-unlock" className="flex-1 h-14 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base">
+                Unlock
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-// ── ConnectForm ───────────────────────────────────────────────────────────────
-function ConnectForm({ onDemo }: { onDemo: () => void }) {
-  const [ip, setIp] = useState("");
-  const [port, setPort] = useState("3000");
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
+// ─── RoomTile ─────────────────────────────────────────────────────────────────
+function RoomTile({
+  room,
+  onSelect,
+  onEdit,
+  onDelete,
+  adminMode,
+}: {
+  room: Room;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  adminMode: boolean;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const speakerCount = room.speakers.length;
 
-  async function connect() {
-    if (!ip.trim()) return;
-    setLoading(true);
-    try {
-      await apiRequest("POST", "/api/connect", { ip: ip.trim(), port: parseInt(port) });
-    } catch {
-      toast({ title: "Connection failed", variant: "destructive" });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (confirmDelete) {
+      const timer = setTimeout(() => setConfirmDelete(false), 3000);
+      return () => clearTimeout(timer);
     }
-  }
-
-  const inputBase: React.CSSProperties = {
-    background: C.panel,
-    border: `1px solid ${C.border}`,
-    borderRadius: 12,
-    color: C.bright,
-    fontSize: 15,
-    padding: "13px 15px",
-    fontFamily: "monospace",
-    outline: "none",
-    width: "100%",
-    WebkitAppearance: "none",
-    transition: "border-color 0.2s",
-  };
+  }, [confirmDelete]);
 
   return (
     <div
-      className="flex flex-col h-full items-center justify-center p-6"
-      style={{ background: C.bg }}
+      className="relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.97] overflow-hidden select-none"
+      onClick={onSelect}
+      data-testid={`tile-room-${room.id}`}
     >
-      <div
-        className="w-full max-w-sm rounded-3xl p-8"
-        style={{ background: C.panel, border: `1px solid ${C.border}` }}
-      >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div
-            className="mx-auto flex items-center justify-center font-black rounded-2xl mb-4"
-            style={{
-              width: 60,
-              height: 60,
-              fontSize: 26,
-              background: `linear-gradient(135deg, ${C.accent}30, ${C.accent}10)`,
-              border: `1px solid ${C.accent}44`,
-              color: C.accent,
-              boxShadow: `0 0 30px ${C.accent}22`,
-            }}
-          >
-            M
+      <div className="p-5 pb-4">
+        <div className="flex items-start justify-between mb-4">
+          {/* Speaker icon — stacked if multi */}
+          <div className="relative">
+            <div className="w-12 h-12 rounded-xl bg-[#FF8200] flex items-center justify-center text-white shadow-sm shadow-[#FF8200]/20">
+              <Speaker className="w-6 h-6" />
+            </div>
+            {speakerCount > 1 && (
+              <div
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-800 dark:bg-white text-white dark:text-slate-800 text-[10px] font-bold flex items-center justify-center shadow"
+                data-testid={`badge-speaker-count-${room.id}`}
+              >
+                {speakerCount}
+              </div>
+            )}
           </div>
-          <div
-            className="font-mono font-bold uppercase"
-            style={{ fontSize: 13, color: C.bright, letterSpacing: "0.35em" }}
-          >
-            M-864D
-          </div>
-          <div
-            className="font-mono mt-1"
-            style={{ fontSize: 10, color: C.dim, letterSpacing: "0.18em" }}
-          >
-            Digital Stereo Mixer
-          </div>
-        </div>
 
-        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.2em" }}>
-          Mixer IP
-        </label>
-        <input
-          style={{ ...inputBase, marginTop: 6, marginBottom: 12 }}
-          type="text"
-          placeholder="192.168.1.100"
-          value={ip}
-          onChange={(e) => setIp(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && connect()}
-          data-testid="input-ip"
-        />
-
-        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.2em" }}>
-          Port
-        </label>
-        <input
-          style={{ ...inputBase, marginTop: 6, marginBottom: 20 }}
-          type="number"
-          value={port}
-          onChange={(e) => setPort(e.target.value)}
-          data-testid="input-port"
-        />
-
-        <button
-          onClick={connect}
-          disabled={loading || !ip.trim()}
-          className="w-full rounded-2xl py-3.5 font-mono uppercase tracking-widest transition-all"
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.22em",
-            background: `linear-gradient(135deg, ${C.accent}20, ${C.accent}0c)`,
-            border: `1px solid ${C.accent}55`,
-            color: C.accent,
-            boxShadow: `0 0 18px ${C.accent}1a`,
-            opacity: loading || !ip.trim() ? 0.5 : 1,
-          }}
-          data-testid="btn-connect"
-        >
-          {loading ? "Connecting…" : "Connect"}
-        </button>
-
-        <div className="flex items-center gap-3 my-5">
-          <div style={{ flex: 1, height: 1, background: C.border }} />
-          <span className="font-mono uppercase" style={{ fontSize: 8, color: C.dim }}>or</span>
-          <div style={{ flex: 1, height: 1, background: C.border }} />
-        </div>
-
-        <button
-          onClick={onDemo}
-          className="w-full rounded-2xl py-3.5 font-mono uppercase tracking-widest transition-all"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            background: C.raised,
-            border: `1px solid ${C.border}`,
-            color: C.dim,
-          }}
-          data-testid="btn-demo-mode"
-        >
-          Preview Interface
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── SettingsPanel ─────────────────────────────────────────────────────────────
-function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: MixerState }) {
-  const [ip, setIp] = useState(wsState.ip || "");
-  const [port, setPort] = useState(String(wsState.port || 3000));
-  const serverUrl = useServerUrl();
-  const { toast } = useToast();
-
-  async function handleConnect() {
-    try {
-      await apiRequest("POST", "/api/connect", { ip: ip.trim(), port: parseInt(port) });
-      onClose();
-    } catch {
-      toast({ title: "Connection failed", variant: "destructive" });
-    }
-  }
-
-  async function handleDisconnect() {
-    try {
-      await apiRequest("POST", "/api/disconnect", {});
-      onClose();
-    } catch {
-      toast({ title: "Disconnect failed", variant: "destructive" });
-    }
-  }
-
-  const inputBase: React.CSSProperties = {
-    background: C.panel,
-    border: `1px solid ${C.border}`,
-    borderRadius: 10,
-    color: C.bright,
-    fontSize: 14,
-    padding: "11px 13px",
-    fontFamily: "monospace",
-    outline: "none",
-    width: "100%",
-    transition: "border-color 0.2s",
-  };
-
-  return (
-    <div
-      className="flex flex-col h-full overflow-auto p-5 gap-4"
-      style={{ background: C.bg }}
-    >
-      <div className="flex items-center justify-between">
-        <span
-          className="font-mono uppercase tracking-widest"
-          style={{ fontSize: 10, color: C.accent, letterSpacing: "0.28em" }}
-        >
-          Settings
-        </span>
-        <button onClick={onClose}><X size={17} color={C.dim} /></button>
-      </div>
-
-      {/* QR code for opening on tablets / phones */}
-      <QRCard url={serverUrl} />
-
-      {/* Status indicator */}
-      <div
-        className="flex items-center gap-3 rounded-2xl p-4"
-        style={{ background: C.panel, border: `1px solid ${C.border}` }}
-      >
-        <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: wsState.connected ? C.monoOut : C.dim,
-            boxShadow: wsState.connected ? `0 0 6px 2px ${C.monoOut}` : "none",
-          }}
-        />
-        <div>
-          <div
-            className="font-mono"
-            style={{ fontSize: 12, color: wsState.connected ? C.monoOut : C.dim }}
-          >
-            {wsState.connected ? "Connected" : "Disconnected"}
-          </div>
-          {wsState.connected && wsState.ip && (
-            <div className="font-mono" style={{ fontSize: 10, color: C.dim }}>
-              {wsState.ip}:{wsState.port}
+          {adminMode && (
+            <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={onEdit}
+                className="p-2.5 rounded-xl text-[#707372] hover:text-[#FF8200] hover:bg-orange-50 dark:hover:bg-orange-900/20 active:bg-orange-100 transition-colors"
+                data-testid={`button-edit-room-${room.id}`}
+              >
+                <Pencil className="w-4.5 h-4.5" />
+              </button>
+              {confirmDelete ? (
+                <button
+                  onClick={onDelete}
+                  className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-500 hover:bg-red-600 active:bg-red-700 transition-colors"
+                  data-testid={`button-confirm-delete-room-${room.id}`}
+                >
+                  Delete?
+                </button>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="p-2.5 rounded-xl text-[#707372] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 active:bg-red-100 transition-colors"
+                  data-testid={`button-delete-room-${room.id}`}
+                >
+                  <Trash2 className="w-4.5 h-4.5" />
+                </button>
+              )}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Connection form */}
-      <div
-        className="rounded-2xl p-4 flex flex-col gap-3"
-        style={{ background: C.panel, border: `1px solid ${C.border}` }}
-      >
-        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}>
-          IP Address
-        </label>
-        <input
-          style={inputBase}
-          type="text"
-          placeholder="192.168.1.100"
-          value={ip}
-          onChange={(e) => setIp(e.target.value)}
-          data-testid="settings-input-ip"
-        />
-        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}>
-          Port
-        </label>
-        <input
-          style={inputBase}
-          type="number"
-          value={port}
-          onChange={(e) => setPort(e.target.value)}
-          data-testid="settings-input-port"
-        />
-        <button
-          onClick={handleConnect}
-          className="rounded-xl py-3 font-mono uppercase tracking-widest"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.2em",
-            background: `${C.accent}1e`,
-            border: `1px solid ${C.accent}44`,
-            color: C.accent,
-          }}
-          data-testid="settings-btn-connect"
-        >
-          Connect
-        </button>
-        {wsState.connected && (
-          <button
-            onClick={handleDisconnect}
-            className="rounded-xl py-3 font-mono uppercase tracking-widest"
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.2em",
-              background: `${C.recOut}14`,
-              border: `1px solid ${C.recOut}33`,
-              color: C.recOut,
-            }}
-            data-testid="settings-btn-disconnect"
-          >
-            Disconnect
-          </button>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate" data-testid={`text-room-name-${room.id}`}>
+          {room.name}
+        </h3>
+
+        {speakerCount === 1 ? (
+          <p className="text-sm text-[#707372] mt-1 truncate">{room.speakers[0].ipAddress}</p>
+        ) : (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-xs font-medium text-[#FF8200]">{speakerCount} speakers</span>
+            <span className="text-[#707372]/40">·</span>
+            <span className="text-xs text-[#707372] truncate">{room.speakers.map((s) => s.label).join(", ")}</span>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// ── Home ──────────────────────────────────────────────────────────────────────
-export default function Home() {
-  const wsState = useMixerWs();
-  const [tab, setTab] = useState<Tab>("channels");
-  const [showSettings, setShowSettings] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  // Local state for demo mode (so controls feel responsive)
-  const [demoState, setDemoState] = useState<MixerState>(defaultMixerState);
+// ─── RoomList ─────────────────────────────────────────────────────────────────
+function RoomList({
+  rooms,
+  onSelectRoom,
+  onAddRoom,
+  onEditRoom,
+  onDeleteRoom,
+  adminMode,
+  onToggleAdmin,
+  syncStatus,
+  onRefresh,
+}: {
+  rooms: Room[];
+  onSelectRoom: (room: Room) => void;
+  onAddRoom: () => void;
+  onEditRoom: (room: Room) => void;
+  onDeleteRoom: (id: string) => void;
+  adminMode: boolean;
+  onToggleAdmin: () => void;
+  syncStatus: "idle" | "synced" | "syncing" | "offline" | "error";
+  onRefresh: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredRooms = useMemo(() => {
+    if (!searchQuery.trim()) return rooms;
+    const q = searchQuery.toLowerCase().trim();
+    return rooms.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.speakers.some((s) => s.ipAddress.includes(q) || s.label.toLowerCase().includes(q))
+    );
+  }, [rooms, searchQuery]);
+
+  return (
+    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col">
+      <header className="sticky top-0 z-10 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60 px-5 py-4 safe-top">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-[#FF8200] flex items-center justify-center text-white shadow-sm shadow-[#FF8200]/20">
+              <HomeIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white" data-testid="text-main-title">Rooms</h1>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-[#707372]">
+                  {rooms.length} {rooms.length === 1 ? "room" : "rooms"}
+                </p>
+                {syncStatus !== "idle" && <span className="text-[#707372]/40">·</span>}
+                {syncStatus === "syncing" && (
+                  <span className="flex items-center gap-1 text-xs text-[#FF8200]">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <span>Syncing</span>
+                  </span>
+                )}
+                {syncStatus === "synced" && (
+                  <span className="text-xs text-emerald-500" data-testid="status-synced">Config saved</span>
+                )}
+                {(syncStatus === "offline" || syncStatus === "error") && (
+                  <button onClick={onRefresh} className="flex items-center gap-1 text-xs text-[#707372] hover:text-[#FF8200] transition-colors" data-testid="button-sync-retry">
+                    <CloudOff className="w-3 h-3" />
+                    <span>Local only — tap to retry</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {adminMode && (
+              <Button
+                onClick={onAddRoom}
+                data-testid="button-add-room"
+                className="h-11 px-5 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-sm"
+              >
+                <PlusCircle className="w-4 h-4 mr-1.5" />
+                Add Room
+              </Button>
+            )}
+            <button
+              onClick={onToggleAdmin}
+              data-testid="button-admin-toggle"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 ${
+                adminMode
+                  ? "bg-[#FF8200] text-white shadow-sm shadow-[#FF8200]/20"
+                  : "bg-slate-100 dark:bg-slate-800 text-[#707372] hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {adminMode ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 px-5 py-5">
+        <div className="max-w-3xl mx-auto">
+          {rooms.length === 0 ? (
+            <div className="text-center py-24">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 text-[#707372] mb-5">
+                <Speaker className="w-10 h-10" />
+              </div>
+              <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2" data-testid="text-empty-title">No rooms yet</h2>
+              <p className="text-base text-[#707372] mb-8 max-w-xs mx-auto">
+                {adminMode
+                  ? "Add your first classroom to start controlling its speaker"
+                  : "Tap the lock icon to unlock admin access and add rooms"}
+              </p>
+              {adminMode && (
+                <Button
+                  onClick={onAddRoom}
+                  data-testid="button-add-room-empty"
+                  className="h-14 px-8 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base"
+                >
+                  <PlusCircle className="w-5 h-5 mr-2" />
+                  Add Your First Room
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {rooms.length > 5 && (
+                <div className="relative mb-4">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#707372]" />
+                  <input
+                    data-testid="input-search-rooms"
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search rooms or speaker IPs..."
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-lg text-[#707372] hover:text-slate-600 transition-colors"
+                      data-testid="button-clear-search"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
+              {searchQuery && filteredRooms.length === 0 ? (
+                <div className="text-center py-16">
+                  <p className="text-base text-[#707372]">No rooms match "{searchQuery}"</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredRooms.map((room) => (
+                    <RoomTile
+                      key={room.id}
+                      room={room}
+                      onSelect={() => onSelectRoom(room)}
+                      onEdit={() => onEditRoom(room)}
+                      onDelete={() => onDeleteRoom(room.id)}
+                      adminMode={adminMode}
+                    />
+                  ))}
+                  {adminMode && !searchQuery && (
+                    <button
+                      onClick={onAddRoom}
+                      data-testid="button-add-room-tile"
+                      className="min-h-[130px] rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-2.5 text-[#707372] hover:text-[#FF8200] hover:border-[#FF8200]/40 transition-all active:scale-[0.97]"
+                    >
+                      <PlusCircle className="w-7 h-7" />
+                      <span className="text-sm font-medium">Add Room</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      <footer className="text-center pb-5 px-5 safe-bottom">
+        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
+      </footer>
+    </div>
+  );
+}
+
+// ─── VolumeKnobDisplay ────────────────────────────────────────────────────────
+function VolumeKnobDisplay({ volume, max }: { volume: number; max: number }) {
+  const percentage = max > 0 ? Math.round((volume / max) * 100) : 0;
+  const r = 58;
+  const circumference = 2 * Math.PI * r;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  const size = 180;
+  const cx = size / 2;
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} className="transform -rotate-90">
+        <circle cx={cx} cy={cx} r={r} stroke="currentColor" className="text-slate-200 dark:text-slate-700" strokeWidth="12" fill="none" />
+        <circle cx={cx} cy={cx} r={r} stroke="#FF8200" strokeWidth="12" fill="none" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="transition-all duration-300 ease-out" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-5xl font-bold text-slate-900 dark:text-white tabular-nums" data-testid="text-volume-percentage">
+          {percentage}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── useSpeakerState hook ─────────────────────────────────────────────────────
+// Manages status, volume, mute for a single speaker connection.
+function useSpeakerState(sp: SpeakerType, showToasts = true) {
   const { toast } = useToast();
+  const [status, setStatus] = useState<SpeakerStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [changingVolume, setChangingVolume] = useState(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [sliderValue, setSliderValue] = useState<number | null>(null);
+  const wasConnectedRef = useRef(true);
 
-  const faderH = useFaderH();
-  // "soft-disconnected" = user toggled View-Only; mixer UI stays visible
-  const softDisconnected = !wsState.connected && wsState.remoteMode === false && !!wsState.ip;
-  const isActive = wsState.connected || demoMode || softDisconnected;
-  // Use real ws state when connected or soft-disconnected (shows last known state)
-  const mixState: MixerState = (wsState.connected || softDisconnected) ? wsState : demoState;
+  const connKey = `${sp.ipAddress}|${sp.username}|${sp.password}`;
+  const conn = { ipAddress: sp.ipAddress, username: sp.username, password: sp.password };
 
-  // viewOnly = either connected in locked mode, OR soft-disconnected
-  const viewOnly = wsState.remoteMode === false;
-
-  async function toggleRemote() {
+  const fetchStatus = useCallback(async () => {
     try {
-      await apiRequest("POST", "/api/remote", { remote: wsState.remoteMode !== true });
-    } catch {
-      toast({ title: "Failed to toggle control lock", variant: "destructive" });
+      const res = await fetch("/api/speaker/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(conn),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Could not reach speaker" }));
+        throw new Error(errData.error || "Could not reach speaker");
+      }
+      const data: SpeakerStatus = await res.json();
+      setStatus(data);
+      if (sliderValue === null) setSliderValue(data.volume);
+      if (!wasConnectedRef.current) {
+        wasConnectedRef.current = true;
+        if (showToasts) toast({ title: "Reconnected", description: `${sp.label} connection restored` });
+      }
+    } catch (err: any) {
+      setStatus((prev) =>
+        prev ? { ...prev, connected: false } : { volume: 0, max: 61, min: 0, muteState: "unmute" as const, connected: false }
+      );
+      if (wasConnectedRef.current) {
+        wasConnectedRef.current = false;
+        if (showToasts) toast({ title: "Connection Lost", description: err.message || `Could not reach ${sp.label}`, variant: "destructive" });
+      }
+    } finally {
+      setLoading(false);
     }
-  }
+  }, [connKey, sliderValue, showToasts]);
 
-  // ── Sync ───────────────────────────────────────────────────────────────────
-  const syncMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/sync"),
-    onSuccess: () => toast({ title: "Synced", description: "Fader levels read from mixer" }),
-    onError: () => toast({ title: "Sync failed", description: "Not connected to mixer", variant: "destructive" }),
-  });
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, 10000);
+    return () => clearInterval(id);
+  }, [fetchStatus]);
 
-  // ── Fader ──────────────────────────────────────────────────────────────────
-  const setFader = useCallback(
-    async (attr: number, ch: number, position: number) => {
-      if (viewOnly) return;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => {
-          const next = { ...prev };
-          if (attr === 0) { next.monoInFader = [...prev.monoInFader]; next.monoInFader[ch] = position; }
-          if (attr === 1) { next.stereoInFader = [...prev.stereoInFader]; next.stereoInFader[ch] = position; }
-          if (attr === 2) { next.monoOutFader = [...prev.monoOutFader]; next.monoOutFader[ch] = position; }
-          if (attr === 3) { next.recOutFader = [...prev.recOutFader]; next.recOutFader[ch] = position; }
-          return next;
-        });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/fader", { attr, ch, position });
-      } catch {
-        toast({ title: "Fader command failed", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
+  const setVolume = useCallback(async (vol: number) => {
+    setChangingVolume(true);
+    try {
+      const res = await fetch("/api/speaker/volume/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...conn, volume: vol }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+      const data = await res.json();
+      setStatus((prev) => prev ? { ...prev, volume: data.volume, connected: true } : prev);
+      setSliderValue(data.volume);
+    } catch (err: any) {
+      if (showToasts) toast({ title: "Volume Error", description: err.message, variant: "destructive" });
+    } finally { setChangingVolume(false); }
+  }, [connKey, showToasts]);
 
-  // ── On/Off ─────────────────────────────────────────────────────────────────
-  const toggleOn = useCallback(
-    async (attr: number, ch: number, curOn: boolean) => {
-      if (viewOnly) return;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => {
-          const next = { ...prev };
-          if (attr === 0) { next.monoInOn = [...prev.monoInOn]; next.monoInOn[ch] = !curOn; }
-          if (attr === 1) { next.stereoInOn = [...prev.stereoInOn]; next.stereoInOn[ch] = !curOn; }
-          if (attr === 2) { next.monoOutOn = [...prev.monoOutOn]; next.monoOutOn[ch] = !curOn; }
-          if (attr === 3) { next.recOutOn = [...prev.recOutOn]; next.recOutOn[ch] = !curOn; }
-          return next;
-        });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/onoff", { attr, ch, on: !curOn });
-      } catch {
-        toast({ title: "On/off command failed", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
+  const handleSliderChange = useCallback((value: number[]) => {
+    const newVol = value[0];
+    setSliderValue(newVol);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setVolume(newVol), 300);
+  }, [setVolume]);
 
-  // ── Matrix input toggle ────────────────────────────────────────────────────
-  const toggleInputMatrix = useCallback(
-    async (srcAttr: number, srcCh: number, bus: number, cur: boolean) => {
-      if (viewOnly) return;
-      const matIdx = srcAttr === 0 ? srcCh : 8 + srcCh;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => {
-          const next = { ...prev };
-          next.inputMatrix = prev.inputMatrix.map((row, ri) =>
-            ri === matIdx ? row.map((v, bi) => (bi === bus ? !cur : v)) : row,
+  const toggleMute = useCallback(async () => {
+    if (!status) return;
+    const newState = status.muteState === "mute" ? "unmute" : "mute";
+    try {
+      const res = await fetch("/api/speaker/mute/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...conn, mute_state: newState }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+      const data = await res.json();
+      setStatus((prev) => prev ? { ...prev, muteState: data.mute_state, connected: true } : prev);
+      if (showToasts) toast({ title: data.mute_state === "mute" ? "Speaker Muted" : "Speaker Unmuted" });
+    } catch (err: any) {
+      if (showToasts) toast({ title: "Mute Error", description: err.message, variant: "destructive" });
+    }
+  }, [status, connKey, showToasts]);
+
+  const setMuteState = useCallback(async (newState: "mute" | "unmute") => {
+    try {
+      const res = await fetch("/api/speaker/mute/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...conn, mute_state: newState }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+      const data = await res.json();
+      setStatus((prev) => prev ? { ...prev, muteState: data.mute_state, connected: true } : prev);
+    } catch (err: any) {
+      if (showToasts) toast({ title: "Mute Error", description: err.message, variant: "destructive" });
+    }
+  }, [connKey, showToasts]);
+
+  const adjustVolume = useCallback(async (direction: "increment" | "decrement") => {
+    try {
+      const res = await fetch(`/api/speaker/volume/${direction}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(conn),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+      const data = await res.json();
+      setStatus((prev) => prev ? { ...prev, volume: data.volume, connected: true } : prev);
+      setSliderValue(data.volume);
+    } catch (err: any) {
+      if (showToasts) toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  }, [connKey, showToasts]);
+
+  const currentVolume = sliderValue ?? status?.volume ?? 0;
+  const maxVolume = status?.max ?? 61;
+  const isMuted = status?.muteState === "mute";
+
+  return { status, loading, changingVolume, currentVolume, maxVolume, isMuted, setVolume, handleSliderChange, toggleMute, setMuteState, adjustVolume, setSliderValue };
+}
+
+// ─── VolumeControls (shared UI block) ────────────────────────────────────────
+function VolumeControls({
+  currentVolume,
+  maxVolume,
+  isMuted,
+  changingVolume,
+  onSliderChange,
+  onDecrement,
+  onIncrement,
+  onMuteToggle,
+  onPreset,
+  muteLabel,
+  testPrefix = "",
+}: {
+  currentVolume: number;
+  maxVolume: number;
+  isMuted: boolean;
+  changingVolume: boolean;
+  onSliderChange: (v: number[]) => void;
+  onDecrement: () => void;
+  onIncrement: () => void;
+  onMuteToggle: () => void;
+  onPreset: (v: number) => void;
+  muteLabel?: string;
+  testPrefix?: string;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onDecrement}
+          className="flex-shrink-0 w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#707372] hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 transition-all shadow-sm"
+          data-testid={`${testPrefix}button-volume-down`}
+        >
+          <Minus className="w-6 h-6" />
+        </button>
+        <div className="flex-1 py-2">
+          <Slider
+            data-testid={`${testPrefix}slider-volume`}
+            value={[currentVolume]}
+            min={0}
+            max={maxVolume}
+            step={1}
+            onValueChange={onSliderChange}
+            className="cursor-pointer touch-none"
+            disabled={changingVolume}
+          />
+        </div>
+        <button
+          onClick={onIncrement}
+          className="flex-shrink-0 w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#707372] hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 transition-all shadow-sm"
+          data-testid={`${testPrefix}button-volume-up`}
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      </div>
+      <div className="flex justify-between text-xs text-[#707372] px-[72px]">
+        <span>Mute</span><span>Max</span>
+      </div>
+
+      <button
+        onClick={onMuteToggle}
+        data-testid={`${testPrefix}button-mute`}
+        className={`w-full h-16 rounded-2xl font-semibold text-lg flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.97] ${
+          isMuted
+            ? "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white shadow-lg shadow-red-500/25"
+            : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm"
+        }`}
+      >
+        <VolumeX className="w-6 h-6" />
+        {isMuted ? `Unmute${muteLabel ? ` ${muteLabel}` : ""}` : `Mute${muteLabel ? ` ${muteLabel}` : ""}`}
+      </button>
+
+      <div className="grid grid-cols-3 gap-4">
+        {VOLUME_PRESETS.map((preset) => {
+          const isActive = currentVolume >= preset.value - 2 && currentVolume <= preset.value + 2;
+          const PresetIcon = preset.icon;
+          return (
+            <button
+              key={preset.label}
+              onClick={() => onPreset(preset.value)}
+              data-testid={`${testPrefix}button-preset-${preset.label.toLowerCase()}`}
+              className={`h-20 rounded-2xl font-semibold text-sm flex flex-col items-center justify-center gap-2 transition-all duration-200 active:scale-95 ${
+                isActive
+                  ? "bg-[#FF8200] text-white shadow-lg shadow-[#FF8200]/25"
+                  : "bg-white dark:bg-slate-800 text-[#707372] border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 shadow-sm"
+              }`}
+            >
+              <PresetIcon className="w-5 h-5" />
+              {preset.label}
+            </button>
           );
-          return next;
-        });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/matrix/input", { srcAttr, srcCh, bus, on: !cur });
-      } catch {
-        toast({ title: "Matrix command failed", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
+        })}
+      </div>
+    </div>
   );
+}
 
-  // ── Matrix output toggle ───────────────────────────────────────────────────
-  const toggleOutputMatrix = useCallback(
-    async (bus: number, dstCh: number, cur: boolean) => {
-      if (viewOnly) return;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => {
-          const next = { ...prev };
-          next.outputMatrix = prev.outputMatrix.map((row, bi) =>
-            bi === bus ? row.map((v, di) => (di === dstCh ? !cur : v)) : row,
-          );
-          return next;
-        });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/matrix/output", { bus, dstCh, on: !cur });
-      } catch {
-        toast({ title: "Matrix command failed", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
-
-  // ── Crosspoint gain ────────────────────────────────────────────────────────
-  const setInputGain = useCallback(
-    async (srcAttr: number, srcCh: number, bus: number, value: number) => {
-      if (viewOnly) return;
-      const matIdx = srcAttr === 0 ? srcCh : 8 + srcCh;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => {
-          const next = { ...prev };
-          next.inputMatrixGain = prev.inputMatrixGain.map((row, ri) =>
-            ri === matIdx ? row.map((v, bi) => (bi === bus ? value : v)) : row,
-          );
-          return next;
-        });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/matrix/input-gain", { srcAttr, srcCh, bus, value });
-      } catch {
-        toast({ title: "Gain command failed", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
-
-  // ── Presets ────────────────────────────────────────────────────────────────
-  const loadPreset = useCallback(
-    async (preset: number) => {
-      if (viewOnly) return;
-      if (demoMode && !wsState.connected) {
-        setDemoState((prev) => ({ ...prev, currentPreset: preset }));
-        toast({ title: `Preset ${preset + 1} loaded` });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/preset/load", { preset });
-        toast({ title: `Preset ${preset + 1} loaded` });
-      } catch {
-        toast({ title: "Failed to load preset", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
-
-  const storePreset = useCallback(
-    async (preset: number) => {
-      if (viewOnly) return;
-      if (demoMode && !wsState.connected) {
-        toast({ title: `Preset ${preset + 1} stored (preview)` });
-        return;
-      }
-      try {
-        await apiRequest("POST", "/api/preset/store", { preset });
-        toast({ title: `Preset ${preset + 1} stored` });
-      } catch {
-        toast({ title: "Failed to store preset", variant: "destructive" });
-      }
-    },
-    [viewOnly, demoMode, wsState.connected, toast],
-  );
-
-  const TABS: { id: Tab; label: string }[] = [
-    { id: "channels", label: "Channels" },
-    { id: "matrix",   label: "Matrix"   },
-    { id: "presets",  label: "Presets"  },
-  ];
+// ─── IndividualSpeakerCard ────────────────────────────────────────────────────
+// Self-contained card for one speaker in individual mode.
+function IndividualSpeakerCard({ speaker }: { speaker: SpeakerType }) {
+  const ctrl = useSpeakerState(speaker, true);
 
   return (
     <div
-      className="flex flex-col dsp-screen"
-      style={{ height: "100dvh", overflow: "hidden", color: C.bright }}
+      className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"
+      data-testid={`card-speaker-${speaker.id}`}
     >
-      {/* ── Header bar ── */}
-      <div
-        className="flex items-center justify-between px-4 shrink-0"
-        style={{ height: 46, background: C.panel, borderBottom: `1px solid ${C.border}` }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: wsState.connected ? C.monoOut : demoMode ? "#996600" : C.dim,
-              boxShadow: wsState.connected
-                ? `0 0 6px 2px ${C.monoOut}`
-                : demoMode
-                ? "0 0 6px 2px #996600"
-                : "none",
-            }}
-          />
-          <span
-            className="font-mono font-bold uppercase"
-            style={{ fontSize: 11, color: C.bright, letterSpacing: "0.28em" }}
-          >
-            M-864D
-          </span>
-          {demoMode && !wsState.connected && (
-            <span
-              className="font-mono uppercase rounded px-2 py-0.5"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.14em",
-                background: "#1c1000",
-                color: "#996600",
-                border: "1px solid #553300",
-              }}
-            >
-              PREVIEW
-            </span>
-          )}
-          {wsState.connected && (
-            <span
-              className="font-mono uppercase rounded px-2 py-0.5"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.14em",
-                background: wsState.remoteMode === false ? "rgba(229,160,0,0.12)" : "rgba(0,180,224,0.12)",
-                color: wsState.remoteMode === false ? C.store : C.accent,
-                border: `1px solid ${wsState.remoteMode === false ? C.store + "44" : C.accent + "44"}`,
-              }}
-              data-testid="status-remote-mode"
-            >
-              {wsState.remoteMode === false ? "VIEW ONLY" : "CONTROL"}
-            </span>
-          )}
+      {/* Card header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-700/60">
+        <div className="w-8 h-8 rounded-lg bg-[#FF8200] flex items-center justify-center flex-shrink-0">
+          <Speaker className="w-4 h-4 text-white" />
         </div>
-
-        <div className="flex items-center gap-2">
-          {/* Sync button — reads all fader positions from mixer */}
-          {wsState.connected && !viewOnly && (
-            <button
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-              className="flex items-center gap-1.5 font-mono uppercase rounded-xl px-3 py-1.5"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.1em",
-                background: `${C.monoOut}12`,
-                border: `1px solid ${C.monoOut}33`,
-                color: C.monoOut,
-                opacity: syncMutation.isPending ? 0.5 : 1,
-                transition: "opacity 0.15s",
-              }}
-              title="Read all fader levels from mixer"
-              data-testid="btn-sync"
-            >
-              <RefreshCw size={9} style={{ animation: syncMutation.isPending ? "spin 0.8s linear infinite" : "none" }} />
-              Sync
-            </button>
-          )}
-          {wsState.connected && (
-            <button
-              onClick={toggleRemote}
-              className="flex items-center gap-1.5 font-mono uppercase rounded-xl px-3 py-1.5"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.1em",
-                background: wsState.remoteMode === false ? `${C.store}14` : `${C.accent}14`,
-                border: `1px solid ${wsState.remoteMode === false ? C.store + "33" : C.accent + "33"}`,
-                color: wsState.remoteMode === false ? C.store : C.accent,
-              }}
-              title={wsState.remoteMode === false
-                ? "Click to enable control — currently view only"
-                : "Click to lock controls — currently sending commands"}
-              data-testid="btn-toggle-remote"
-            >
-              {wsState.remoteMode === false
-                ? <><Eye size={9} /> View Only</>
-                : <><Radio size={9} /> Control</>}
-            </button>
-          )}
-          {demoMode && !wsState.connected && (
-            <button
-              onClick={() => setDemoMode(false)}
-              className="flex items-center gap-1 font-mono uppercase rounded-xl px-3 py-1.5"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.1em",
-                background: C.raised,
-                border: `1px solid ${C.border}`,
-                color: C.dim,
-              }}
-            >
-              <X size={9} /> Exit
-            </button>
-          )}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="flex items-center justify-center rounded-xl transition-all"
-            style={{
-              width: 34,
-              height: 34,
-              background: showSettings ? `${C.accent}1e` : C.raised,
-              border: `1px solid ${showSettings ? C.accent + "55" : C.border}`,
-            }}
-            data-testid="btn-settings"
-          >
-            <Settings size={14} color={showSettings ? C.accent : C.dim} />
-          </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{speaker.label}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ctrl.status?.connected ? "bg-emerald-500" : "bg-red-400"}`} />
+            <span className="text-xs text-[#707372] truncate">{speaker.ipAddress}</span>
+          </div>
         </div>
+        <span className="text-2xl font-bold text-slate-700 dark:text-slate-200 tabular-nums">
+          {ctrl.maxVolume > 0 ? Math.round((ctrl.currentVolume / ctrl.maxVolume) * 100) : 0}%
+        </span>
       </div>
 
-      {/* ── Settings ── */}
-      {showSettings && (
-        <div className="flex-1 overflow-hidden">
-          <SettingsPanel wsState={wsState} onClose={() => setShowSettings(false)} />
+      {ctrl.loading ? (
+        <div className="px-5 py-6 text-center">
+          <p className="text-sm text-[#707372]">Connecting…</p>
         </div>
-      )}
-
-      {/* ── Connect screen ── */}
-      {!isActive && !showSettings && (
-        <div className="flex-1 overflow-hidden">
-          <ConnectForm onDemo={() => setDemoMode(true)} />
+      ) : !ctrl.status?.connected ? (
+        <div className="px-5 py-4 flex items-center gap-2 text-red-500">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <p className="text-sm">Speaker unreachable</p>
         </div>
-      )}
-
-      {/* ── Main mixer UI ── */}
-      {isActive && !showSettings && (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* View-only banner */}
-          {viewOnly && (
-            <div
-              className="flex items-center justify-center gap-2 shrink-0 font-mono uppercase"
-              style={{
-                height: 28,
-                fontSize: 9,
-                letterSpacing: "0.22em",
-                background: `${C.store}1a`,
-                borderBottom: `1px solid ${C.store}44`,
-                color: C.store,
-              }}
-              data-testid="banner-view-only"
-            >
-              <Eye size={10} />
-              {softDisconnected ? "Disconnected from mixer — tap Control to reconnect" : "Controls locked — tap Control to re-enable"}
-            </div>
-          )}
-          {/* Tab bar */}
-          <div
-            className="flex shrink-0 px-3 gap-1 pt-1.5"
-            style={{ background: C.panel, borderBottom: `1px solid ${C.border}` }}
-          >
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="font-mono uppercase tracking-widest rounded-t-xl px-6 py-2 transition-all"
-                style={{
-                  fontSize: 9,
-                  letterSpacing: "0.22em",
-                  color: tab === t.id ? C.accent : C.dim,
-                  background: tab === t.id ? C.bg : "transparent",
-                  borderTop: `1px solid ${tab === t.id ? C.border : "transparent"}`,
-                  borderLeft: `1px solid ${tab === t.id ? C.border : "transparent"}`,
-                  borderRight: `1px solid ${tab === t.id ? C.border : "transparent"}`,
-                  borderBottom: tab === t.id ? `1px solid ${C.bg}` : "1px solid transparent",
-                  marginBottom: -1,
-                }}
-                data-testid={`tab-${t.id}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Channels ── */}
-          {tab === "channels" && (
-            <div
-              className="flex overflow-x-auto overflow-y-hidden flex-1"
-              style={{ scrollbarWidth: "thin", scrollbarColor: `${C.border} transparent`, alignItems: "flex-start" }}
-            >
-              {CH_DEFS.map((ch) => (
-                <ChannelStrip
-                  key={ch.label}
-                  label={ch.label}
-                  color={ch.color}
-                  position={ch.getPos(mixState)}
-                  on={ch.getOn(mixState)}
-                  level={ch.getLvl(mixState)}
-                  faderH={faderH}
-                  onFader={(v) => setFader(ch.attr, ch.ch, v)}
-                  onToggle={() => toggleOn(ch.attr, ch.ch, ch.getOn(mixState))}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* ── Matrix ── */}
-          {tab === "matrix" && (
-            <div className="flex-1 overflow-hidden">
-              <MatrixGrid
-                mixState={mixState}
-                onToggleInput={toggleInputMatrix}
-                onToggleOutput={toggleOutputMatrix}
-                onSetGain={setInputGain}
-              />
-            </div>
-          )}
-
-          {/* ── Presets ── */}
-          {tab === "presets" && (
-            <div className="flex-1 overflow-hidden">
-              <PresetsPanel
-                currentPreset={mixState.currentPreset}
-                onLoad={loadPreset}
-                onStore={storePreset}
-              />
-            </div>
-          )}
+      ) : (
+        <div className="px-5 py-4">
+          <VolumeControls
+            currentVolume={ctrl.currentVolume}
+            maxVolume={ctrl.maxVolume}
+            isMuted={ctrl.isMuted}
+            changingVolume={ctrl.changingVolume}
+            onSliderChange={ctrl.handleSliderChange}
+            onDecrement={() => ctrl.adjustVolume("decrement")}
+            onIncrement={() => ctrl.adjustVolume("increment")}
+            onMuteToggle={ctrl.toggleMute}
+            onPreset={(v) => { ctrl.setSliderValue(v); ctrl.setVolume(v); }}
+            testPrefix={`sp-${speaker.id}-`}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+// ─── ControlPanel ─────────────────────────────────────────────────────────────
+function ControlPanel({ room, onBack }: { room: Room; onBack: () => void }) {
+  const { toast } = useToast();
+  const isMulti = room.speakers.length > 1;
+  const [syncMode, setSyncMode] = useState(room.syncMode ?? true);
+
+  // Primary speaker state (always active — drives the sync controls + single-speaker mode)
+  const primary = useSpeakerState(room.speakers[0], !isMulti || syncMode);
+
+  // For sync mode status of all other speakers (connection dots only)
+  const [otherStatuses, setOtherStatuses] = useState<(SpeakerStatus | null)[]>(
+    () => room.speakers.slice(1).map(() => null)
+  );
+
+  // Poll non-primary speakers for connection status when in sync mode
+  useEffect(() => {
+    if (!isMulti || !syncMode) return;
+    const others = room.speakers.slice(1);
+    if (others.length === 0) return;
+
+    const poll = async () => {
+      const results = await Promise.allSettled(
+        others.map((sp) =>
+          fetch("/api/speaker/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password }),
+          }).then((r) => {
+            if (!r.ok) throw new Error("failed");
+            return r.json() as Promise<SpeakerStatus>;
+          })
+        )
+      );
+      setOtherStatuses(
+        results.map((r) =>
+          r.status === "fulfilled"
+            ? r.value
+            : { volume: 0, max: 61, min: 0, muteState: "unmute" as const, connected: false }
+        )
+      );
+    };
+
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => clearInterval(id);
+  }, [isMulti, syncMode, room.speakers.map((s) => s.ipAddress).join(",")]);
+
+  // Fire volume to all speakers in sync mode
+  const setVolumeAll = useCallback(async (vol: number) => {
+    primary.setSliderValue(vol);
+    await Promise.allSettled(
+      room.speakers.map((sp) =>
+        fetch("/api/speaker/volume/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password, volume: vol }),
+        })
+      )
+    );
+    primary.setVolume(vol);
+  }, [room.speakers, primary.setVolume, primary.setSliderValue]);
+
+  const handleSyncSlider = useCallback((value: number[]) => {
+    primary.setSliderValue(value[0]);
+    setVolumeAll(value[0]);
+  }, [setVolumeAll, primary.setSliderValue]);
+
+  // Fire mute to all speakers in sync mode
+  const toggleMuteAll = useCallback(async () => {
+    if (!primary.status) return;
+    const newState = primary.isMuted ? "unmute" : "mute";
+    await Promise.allSettled(
+      room.speakers.map((sp) =>
+        fetch("/api/speaker/mute/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password, mute_state: newState }),
+        })
+      )
+    );
+    primary.setMuteState(newState);
+    toast({ title: newState === "mute" ? "All Speakers Muted" : "All Speakers Unmuted" });
+  }, [primary.status, primary.isMuted, primary.setMuteState, room.speakers, toast]);
+
+  // All speaker connection statuses (primary + others)
+  const allStatuses = [primary.status, ...otherStatuses];
+  const connectedCount = allStatuses.filter((s) => s?.connected).length;
+
+  if (primary.loading && !isMulti) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#FF8200] text-white mb-5 animate-pulse shadow-lg shadow-[#FF8200]/25">
+            <Speaker className="w-10 h-10" />
+          </div>
+          <p className="text-base text-[#707372] font-medium" data-testid="text-connecting">Connecting to {room.name}…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60 px-5 py-3 safe-top">
+        <div className="flex items-center gap-3 max-w-lg mx-auto">
+          <button
+            onClick={onBack}
+            className="p-3 -ml-3 rounded-xl text-[#707372] hover:text-slate-700 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-800 active:bg-slate-200 transition-colors"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 truncate" data-testid="text-room-title">
+              {room.name}
+            </h2>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {isMulti ? (
+                <>
+                  <span className="text-xs text-[#707372]">{connectedCount}/{room.speakers.length} connected</span>
+                  {/* Speaker dots */}
+                  <span className="text-[#707372]/40 mx-0.5">·</span>
+                  <div className="flex gap-1">
+                    {room.speakers.map((sp, i) => (
+                      <div
+                        key={sp.id}
+                        title={sp.label}
+                        className={`w-2 h-2 rounded-full ${allStatuses[i]?.connected ? "bg-emerald-500" : "bg-red-400"}`}
+                        data-testid={`dot-speaker-${sp.id}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${primary.status?.connected ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-red-500 shadow-sm shadow-red-500/50"}`} data-testid="status-connection" />
+                  <span className="text-xs text-[#707372] truncate">{room.speakers[0].ipAddress}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Sync / Individual toggle for multi-speaker rooms */}
+          {isMulti && (
+            <button
+              onClick={() => setSyncMode((v) => !v)}
+              data-testid="button-sync-toggle"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
+                syncMode
+                  ? "bg-[#FF8200] text-white shadow-sm shadow-[#FF8200]/20"
+                  : "bg-slate-100 dark:bg-slate-800 text-[#707372] hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {syncMode ? <Link2 className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
+              {syncMode ? "Synced" : "Individual"}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ── SYNC MODE (or single speaker) ── */}
+      {syncMode && (
+        <>
+          {!primary.status?.connected && (
+            <div className="mx-5 mt-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-2.5">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-700 dark:text-red-400">
+                {isMulti ? "Primary speaker unreachable" : "Speaker unreachable — check network and credentials"}
+              </p>
+            </div>
+          )}
+
+          <main className="flex-1 flex flex-col items-center justify-center px-5 py-8">
+            <div className="w-full max-w-sm space-y-10">
+              <div className="text-center">
+                <VolumeKnobDisplay volume={primary.currentVolume} max={primary.maxVolume} />
+                {isMulti && (
+                  <p className="text-xs text-[#707372] mt-2">Controls all {room.speakers.length} speakers together</p>
+                )}
+              </div>
+
+              <VolumeControls
+                currentVolume={primary.currentVolume}
+                maxVolume={primary.maxVolume}
+                isMuted={primary.isMuted}
+                changingVolume={primary.changingVolume}
+                onSliderChange={isMulti ? handleSyncSlider : primary.handleSliderChange}
+                onDecrement={() => isMulti ? setVolumeAll(Math.max(0, primary.currentVolume - 1)) : primary.adjustVolume("decrement")}
+                onIncrement={() => isMulti ? setVolumeAll(Math.min(primary.maxVolume, primary.currentVolume + 1)) : primary.adjustVolume("increment")}
+                onMuteToggle={isMulti ? toggleMuteAll : primary.toggleMute}
+                onPreset={(v) => { primary.setSliderValue(v); isMulti ? setVolumeAll(v) : primary.setVolume(v); }}
+                muteLabel={isMulti ? "All" : "Speaker"}
+              />
+
+              {/* Per-speaker connection status strip (multi only) */}
+              {isMulti && (
+                <div className="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/60 shadow-sm">
+                  {room.speakers.map((sp, i) => (
+                    <div key={sp.id} className="flex items-center gap-3 px-4 py-3" data-testid={`row-speaker-status-${sp.id}`}>
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${allStatuses[i]?.connected ? "bg-emerald-500" : "bg-red-400"}`} />
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1">{sp.label}</span>
+                      <span className="text-xs text-[#707372]">{sp.ipAddress}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+        </>
+      )}
+
+      {/* ── INDIVIDUAL MODE ── */}
+      {!syncMode && isMulti && (
+        <main className="flex-1 px-5 py-5 overflow-y-auto">
+          <div className="max-w-lg mx-auto space-y-4">
+            <p className="text-xs text-[#707372] text-center mb-1">Each speaker is controlled independently</p>
+            {room.speakers.map((sp) => (
+              <IndividualSpeakerCard key={sp.id} speaker={sp} />
+            ))}
+          </div>
+        </main>
+      )}
+
+      <footer className="text-center pb-5 px-5 safe-bottom">
+        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
+      </footer>
+    </div>
+  );
+}
+
+// ─── Home (root) ──────────────────────────────────────────────────────────────
+export default function Home() {
+  const [rooms, setRooms] = useState<Room[]>(() => loadRoomsFromCache());
+  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [adminMode, setAdminMode] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "synced" | "syncing" | "offline" | "error">("syncing");
+  const { toast } = useToast();
+
+  const loadFromServer = useCallback(async () => {
+    setSyncStatus("syncing");
+    try {
+      const serverRooms = await fetchRoomsFromServer();
+      setRooms(serverRooms);
+      saveRoomsToCache(serverRooms);
+      setSyncStatus("idle");
+    } catch {
+      const cached = loadRoomsFromCache();
+      setRooms(cached);
+      setSyncStatus("offline");
+    }
+  }, []);
+
+  useEffect(() => { loadFromServer(); }, [loadFromServer]);
+
+  const updateRooms = useCallback(async (newRooms: Room[]) => {
+    setRooms(newRooms);
+    saveRoomsToCache(newRooms);
+    setSyncStatus("syncing");
+    try {
+      await saveRoomsToServer(newRooms);
+      setSyncStatus("synced");
+      setTimeout(() => setSyncStatus("idle"), 3000);
+    } catch (err: any) {
+      setSyncStatus("error");
+      toast({ title: "Could not save to config file", description: err?.message || "Check that the server is running.", variant: "destructive" });
+    }
+  }, [toast]);
+
+  const handleAddRoom = (room: Room) => {
+    if (editingRoom) {
+      updateRooms(rooms.map((r) => (r.id === room.id ? room : r)));
+    } else {
+      updateRooms([...rooms, room]);
+    }
+    setShowAddDialog(false);
+    setEditingRoom(null);
+  };
+
+  const handleDeleteRoom = (id: string) => updateRooms(rooms.filter((r) => r.id !== id));
+
+  const handleToggleAdmin = () => {
+    if (adminMode) { setAdminMode(false); }
+    else { setShowPasswordDialog(true); }
+  };
+
+  if (activeRoom) {
+    return <ControlPanel room={activeRoom} onBack={() => setActiveRoom(null)} />;
+  }
+
+  return (
+    <>
+      <RoomList
+        rooms={rooms}
+        onSelectRoom={setActiveRoom}
+        onAddRoom={() => { setEditingRoom(null); setShowAddDialog(true); }}
+        onEditRoom={(room) => { setEditingRoom(room); setShowAddDialog(true); }}
+        onDeleteRoom={handleDeleteRoom}
+        adminMode={adminMode}
+        onToggleAdmin={handleToggleAdmin}
+        syncStatus={syncStatus}
+        onRefresh={loadFromServer}
+      />
+      {showPasswordDialog && (
+        <AdminPasswordDialog
+          onUnlock={() => { setAdminMode(true); setShowPasswordDialog(false); }}
+          onCancel={() => setShowPasswordDialog(false)}
+        />
+      )}
+      {showAddDialog && (
+        <AddRoomDialog
+          onAdd={handleAddRoom}
+          onCancel={() => { setShowAddDialog(false); setEditingRoom(null); }}
+          editRoom={editingRoom}
+        />
+      )}
+    </>
   );
 }

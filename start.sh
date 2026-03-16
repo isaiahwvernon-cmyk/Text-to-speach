@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "=========================================="
-echo "  M-864D Mixer Controller"
+echo "  TOA IP-A1 Speaker Control"
 echo "=========================================="
 echo
 
@@ -17,31 +17,12 @@ if [ ! -d "node_modules" ]; then
     echo
 fi
 
-if [ ! -f "dist/.m864d-build" ]; then
-    echo "Building app for the first time... this takes about 30 seconds."
-    echo "(If you had an older version installed, this will replace it.)"
-    echo
-    npx tsx script/build.ts
-    if [ $? -ne 0 ]; then
-        echo
-        echo "ERROR: Build failed. See above for details."
-        echo "Try deleting the 'dist' folder and running again."
-        exit 1
-    fi
-    echo
-    echo "Build complete!"
-    echo
-fi
-
 echo "Starting server..."
 echo
-echo "Mixer control panel:  http://localhost:5000"
+echo "Open your browser to:  http://localhost:5000"
 echo
-echo "Tablets and phones on the same Wi-Fi network can also connect."
 echo "Press Ctrl+C to stop the server."
 echo "=========================================="
 echo
 
-(sleep 4 && open "http://localhost:5000" 2>/dev/null || xdg-open "http://localhost:5000" 2>/dev/null; sleep 1 && open "http://localhost:5000/connect" 2>/dev/null || xdg-open "http://localhost:5000/connect" 2>/dev/null) &
-
-node dist/index.cjs
+NODE_ENV=development npx tsx server/index.ts

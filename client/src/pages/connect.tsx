@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
-import { Monitor } from "lucide-react";
+import { useLocation } from "wouter";
+import { Wifi, Monitor } from "lucide-react";
 
 interface ServerInfo {
   lanIP: string;
@@ -9,6 +10,8 @@ interface ServerInfo {
 }
 
 export default function ConnectPage() {
+  const [, navigate] = useLocation();
+
   const { data: info, isLoading } = useQuery<ServerInfo>({
     queryKey: ["/api/info"],
     refetchInterval: 10000,
@@ -16,134 +19,81 @@ export default function ConnectPage() {
 
   const isLocalhost =
     !info || info.lanIP === "localhost" || info.lanIP === "127.0.0.1";
-  const displayUrl = info?.url ?? "Loading…";
+  const displayUrl = info?.url ?? "Loading...";
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 py-10"
-      style={{
-        background: "#0b1120",
-        backgroundImage:
-          "repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(0,180,224,0.025) 3px, rgba(0,180,224,0.025) 4px)",
-        color: "#d0e6f4",
-      }}
+      className="min-h-screen bg-background flex flex-col items-center justify-center px-6 py-10 safe-top safe-bottom"
       data-testid="connect-page"
     >
-      <div className="w-full max-w-sm flex flex-col items-center gap-7">
+      <div className="w-full max-w-lg flex flex-col items-center gap-8">
 
-        {/* Header */}
         <div className="text-center">
-          <div
-            className="mx-auto flex items-center justify-center font-black rounded-2xl mb-4"
-            style={{
-              width: 56, height: 56, fontSize: 24,
-              background: "rgba(0,180,224,0.12)",
-              border: "1px solid rgba(0,180,224,0.3)",
-              color: "#00b4e0",
-              boxShadow: "0 0 28px rgba(0,180,224,0.15)",
-            }}
-          >
-            M
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Wifi className="w-6 h-6 text-primary" />
+            <span className="text-sm font-semibold uppercase tracking-widest text-primary">
+              IP-A1 Volume Controller
+            </span>
           </div>
-          <div
-            className="font-mono font-bold uppercase"
-            style={{ fontSize: 13, color: "#d0e6f4", letterSpacing: "0.35em" }}
-          >
-            M-864D
-          </div>
-          <div
-            className="font-mono mt-1"
-            style={{ fontSize: 10, color: "#4a637d", letterSpacing: "0.18em" }}
-          >
-            Digital Stereo Mixer
-          </div>
+          <h1 className="text-3xl font-bold text-foreground">
+            Connect from any device
+          </h1>
+          <p className="mt-2 text-muted-foreground text-base">
+            Scan the QR code or type the address into any browser on this network.
+          </p>
         </div>
 
-        {/* QR / placeholder */}
         {isLoading ? (
-          <div
-            className="rounded-2xl animate-pulse"
-            style={{ width: 220, height: 220, background: "#1a2540" }}
-          />
+          <div className="w-64 h-64 bg-muted rounded-2xl animate-pulse" />
         ) : isLocalhost ? (
-          <div
-            className="rounded-2xl flex flex-col items-center justify-center gap-3 text-center px-6"
-            style={{
-              width: 220, height: 220,
-              background: "#111827",
-              border: "1px solid #22344e",
-              color: "#4a637d",
-            }}
-          >
-            <Monitor size={36} />
-            <p className="text-sm leading-snug font-mono">
-              No LAN address detected.<br />
-              Open <strong style={{ color: "#8bafc6" }}>localhost:5000</strong><br />
-              in your browser.
+          <div className="w-64 h-64 bg-muted rounded-2xl flex flex-col items-center justify-center gap-3 text-muted-foreground text-center px-6">
+            <Monitor className="w-10 h-10" />
+            <p className="text-sm leading-snug">
+              No LAN address detected. Open{" "}
+              <strong>localhost:5000</strong> in your browser.
             </p>
           </div>
         ) : (
           <div
-            className="p-3 rounded-2xl"
-            style={{ background: "#ffffff", boxShadow: "0 0 40px rgba(0,180,224,0.2)" }}
+            className="p-4 bg-white rounded-2xl shadow-md"
             data-testid="qr-code"
           >
             <QRCodeSVG
               value={info!.url}
-              size={220}
-              bgColor="#ffffff"
-              fgColor="#0b1120"
+              size={240}
               level="M"
               includeMargin={false}
             />
           </div>
         )}
 
-        {/* Network address */}
         <div className="text-center">
-          <p
-            className="font-mono uppercase"
-            style={{ fontSize: 8, color: "#4a637d", letterSpacing: "0.22em", marginBottom: 6 }}
-          >
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
             Network address
           </p>
           <p
-            className="font-mono font-bold break-all select-all"
-            style={{ fontSize: 17, color: "#00b4e0", letterSpacing: "0.04em" }}
+            className="text-2xl font-bold font-mono text-foreground break-all"
             data-testid="network-url"
           >
             {displayUrl}
           </p>
         </div>
 
-        {/* Instructions */}
-        <div
-          className="w-full rounded-2xl px-5 py-4 font-mono"
-          style={{
-            background: "#111827",
-            border: "1px solid #22344e",
-            fontSize: 11,
-            color: "#4a637d",
-            lineHeight: 1.7,
-            letterSpacing: "0.02em",
-          }}
-        >
+        <div className="w-full bg-card border border-border rounded-xl px-5 py-4 text-sm text-muted-foreground leading-relaxed">
           <ol className="list-decimal list-inside space-y-1">
             <li>Make sure the device is on the same Wi-Fi or network.</li>
             <li>Scan the QR code <em>or</em> type the address above into any browser.</li>
-            <li>Enter the M-864D mixer IP address to connect and control.</li>
+            <li>Select a room and adjust the volume.</li>
           </ol>
         </div>
 
-        {/* Open locally */}
-        <a
-          href="/"
-          className="font-mono uppercase"
-          style={{ fontSize: 9, color: "#4a637d", letterSpacing: "0.18em", textDecoration: "underline" }}
+        <button
+          onClick={() => navigate("/")}
+          className="text-sm text-primary underline underline-offset-4 hover:opacity-70 transition-opacity"
           data-testid="button-open-controller"
         >
           Open controller on this device →
-        </a>
+        </button>
       </div>
     </div>
   );

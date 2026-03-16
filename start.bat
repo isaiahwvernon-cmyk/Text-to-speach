@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   M-864D Mixer Controller
+echo   IP-A1 Volume Controller
 echo ==========================================
 echo.
 
@@ -30,9 +30,8 @@ if not exist node_modules (
     echo.
 )
 
-if not exist dist\.m864d-build (
+if not exist dist\public\index.html (
     echo Building app for the first time... this takes about 30 seconds.
-    echo (If you had an older version installed, this will replace it.)
     echo.
     call npx tsx script/build.ts
     if %errorlevel% neq 0 (
@@ -49,14 +48,14 @@ if not exist dist\.m864d-build (
 
 echo Starting server...
 echo.
-echo The mixer control panel will open automatically in a few seconds.
-echo Tablets and phones on the same network can connect at the address shown.
+echo The browser will open automatically in a few seconds.
+echo The connect page shows a QR code for other devices.
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
 echo.
 
-start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000 && start http://localhost:5000/connect"
+start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000/connect"
 
 node dist\index.cjs
 

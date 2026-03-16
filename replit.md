@@ -1,55 +1,49 @@
-# M-864D Mixer Controller
+# IP-A1 Volume Controller
 
 ## Overview
-A web-based control interface for the TOA M-864D Digital Stereo Mixer. Runs as a Node.js server on a PC; tablets and other devices can connect via any browser on the same network to control the mixer in real time.
+A web interface for controlling multiple IP-A1 classroom speakers. Teachers can add rooms, name them, and control each speaker's volume from any browser on the school network.
 
 ## Architecture
 - **Frontend**: React + TypeScript with Tailwind CSS and shadcn/ui components
-- **Backend**: Express.js + TCP client that communicates with the M-864D mixer using its binary External Control Protocol
-- **Real-time sync**: WebSocket (`/ws`) broadcasts every state change to all connected browsers
-- **Storage**: Mixer IP/port saved in `mixer-config.json` on disk; auto-reconnects on startup
-- **Cross-platform**: `start.bat` (Windows) / `start.sh` (Mac/Linux) startup scripts
+- **Backend**: Express.js proxy that handles Digest Authentication to speakers
+- **Storage**: Rooms saved in browser localStorage (no database needed)
+- **Cross-platform**: Includes start.bat (Windows) and start.sh (Mac/Linux) for local running
 
 ## Theme & Design
-- Dark mixer-style UI (hsl(220 20% 7%) background)
-- Orange accent: hsl(30 100% 52%)
-- Color-coded channel groups (blue = mono in, purple = stereo in, green = mono out, red = rec out)
-- Touch-friendly for tablet use (large hit targets on faders and matrix cells)
+- **Primary color**: Orange #FF8200
+- **Grey accent**: #707372
+- **Font**: Barlow (Google Fonts)
+- Volume knob shows percentage only (no raw value / max)
+- Mobile/tablet-first with large touch targets
 
 ## Key Features
-- **Connection**: Enter mixer IP + TCP port (default 3000), auto-reconnects on disconnect
-- **Channels tab**: Vertical faders for all 16 channels (8 mono in, 2 stereo in, 4 mono out, 2 rec out) with ON/OFF toggle and live level meters
-- **Matrix tab**: Input matrix (10 sources × 4 buses) with crosspoint gain control; output matrix (4 buses × 2 rec out)
-- **Presets tab**: 16 preset slots with load and save (store) buttons, active preset highlighted
-- **Keepalive**: Sends TCP data every 15 seconds to maintain the mixer connection
-- **Full state refresh**: Requests all channel/matrix states on connect, then polls every 30 seconds
+- Multi-room management (add/edit/remove rooms, password-protected with "IPA1")
+- Room tiles UI with search bar (appears when >5 rooms)
+- **Multi-speaker rooms**: each room can have 1–N speakers grouped together
+  - Sync mode: one master control fires to all speakers simultaneously
+  - Individual mode: each speaker gets its own slider, mute, and presets
+  - Numeric badge on room tile shows speaker count when >1
+- Per-room volume control: slider, +/- buttons, presets (Low/Normal/Loud)
+- Mute/unmute (single speaker or all-at-once in sync mode)
+- Auto-polling for status updates every 10 seconds
+- Admin lock/unlock (password: IPA1) gates room add/edit/delete
+- Old single-speaker rooms.json format is auto-migrated on first load
 
 ## Key Files
-- `client/src/pages/home.tsx` - Main mixer UI (channels, matrix, presets tabs)
-- `server/mixer.ts` - TCP client and state manager for the M-864D
-- `server/routes.ts` - REST API + WebSocket server
-- `server/index.ts` - Express entry point
-- `shared/schema.ts` - Shared types: MixerState, gain tables, helper functions
-- `mixer-config.json` - Saved mixer IP/port (auto-created)
-- `start.bat` / `start.sh` - Local startup scripts
+- `client/src/pages/home.tsx` - Main page: RoomList, AddRoomDialog, AdminPasswordDialog, ControlPanel
+- `server/routes.ts` - Backend proxy with Digest Authentication
+- `shared/schema.ts` - Shared TypeScript types (Room, SpeakerStatus, SpeakerConnection)
+- `client/src/index.css` - Theme colors (orange primary), Barlow font, safe-area CSS
+- `start.bat` / `start.sh` - Local startup scripts for Windows / Mac / Linux
 
-## M-864D Protocol
-- TCP server on port 3000 (configurable)
-- Binary framing: `[CMD byte] [length N] [data 0..N-1]`
-- CMD bytes: 0x91=fader, 0x92=on/off, 0x94=input matrix, 0x95=crosspoint gain, 0x96=output matrix, 0xF1=preset load, 0xF3=preset store, 0xF0=status request
-- On connect: M-864D sends `DF 01 01`; remote must send data at least every ~60s
+## API Proxy Routes
+- `POST /api/speaker/status` - Get volume, mute state, model info
+- `POST /api/speaker/volume/set` - Set master volume (0-61)
+- `POST /api/speaker/volume/increment` - Increment volume
+- `POST /api/speaker/volume/decrement` - Decrement volume
+- `POST /api/speaker/mute/set` - Set mute/unmute state
 
-## API Routes
-- `GET /api/state` - Full mixer state
-- `GET/POST /api/config` - Read/write mixer IP+port
-- `POST /api/connect` - Connect to mixer
-- `POST /api/disconnect` - Disconnect
-- `POST /api/fader` - Set fader position
-- `POST /api/onoff` - Set channel on/off
-- `POST /api/matrix/input` - Toggle input matrix crosspoint
-- `POST /api/matrix/input-gain` - Set crosspoint gain
-- `POST /api/matrix/output` - Toggle output matrix crosspoint
-- `POST /api/preset/load` - Load preset
-- `POST /api/preset/store` - Store preset
-- `GET /api/info` - Server LAN IP + port
-- `WS /ws` - WebSocket for real-time state pushes
+## IP-A1 API
+- Volume: 0 (Mute) to 61 (0 dB), initial: 31 (-30 dB)
+- Auth: HTTP Digest Authentication
+- Endpoints: GET /api/v2/volume/{get_master,set_master,inc_master,dec_master,get_master_mute,set_master_mute}
