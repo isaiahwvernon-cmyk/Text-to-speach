@@ -1,1028 +1,1278 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useMixerWs } from "@/hooks/use-mixer";
-import { faderPositionToDb, crosspointValueToDb, formatDb } from "@shared/schema";
+import {
+  defaultMixerState,
+  type MixerState,
+  faderPositionToDb,
+  crosspointValueToDb,
+  formatDb,
+} from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Save, FolderOpen, WifiOff, X } from "lucide-react";
+import { Settings, X } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
-async function api(path: string, body?: object) {
-  const res = await fetch(path, {
-    method: body !== undefined ? "POST" : "GET",
-    headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Tab = "channels" | "matrix" | "presets";
 
-function LevelMeter({ level }: { level: number }) {
-  const pct = Math.max(0, Math.min(100, (level / 72) * 100));
-  const color =
-    level >= 60 ? "#ef4444" : level >= 48 ? "#eab308" : "#22c55e";
-  return (
-    <div
-      className="w-2 rounded-sm overflow-hidden flex flex-col justify-end"
-      style={{ height: 140, background: "hsl(220 15% 12%)" }}
-    >
-      <div
-        className="w-full transition-all duration-75 rounded-sm"
-        style={{ height: `${pct}%`, background: color, minHeight: level > 0 ? 2 : 0 }}
-      />
-    </div>
-  );
-}
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const C = {
+  bg:       "#04070e",
+  panel:    "#090f1c",
+  raised:   "#0e1826",
+  border:   "#14243a",
+  dim:      "#3a506a",
+  text:     "#7a9ab5",
+  bright:   "#c0d8ee",
+  accent:   "#00b4e0",
+  monoIn:   "#2878ff",
+  stereoIn: "#a040ff",
+  monoOut:  "#18c068",
+  recOut:   "#f83028",
+  on:       "#ff5820",
+};
 
-function ChannelStrip({
-  label,
-  position,
-  on,
-  level,
-  onFaderChange,
-  onToggle,
-  color,
-}: {
+// Channel attr codes: 0=monoIn, 1=stereoIn, 2=monoOut, 3=recOut
+const ATTR = { monoIn: 0, stereoIn: 1, monoOut: 2, recOut: 3 } as const;
+
+const CH_DEFS = [
+  ...Array.from({ length: 8 }, (_, i) => ({
+    label: `IN ${i + 1}`, attr: ATTR.monoIn, ch: i, color: C.monoIn,
+    getPos: (s: MixerState) => s.monoInFader[i] ?? 53,
+    getOn:  (s: MixerState) => s.monoInOn[i]  ?? true,
+    getLvl: (s: MixerState) => s.monoInLevel[i] ?? 0,
+    matIdx: i,
+  })),
+  ...Array.from({ length: 2 }, (_, i) => ({
+    label: `ST ${i + 1}`, attr: ATTR.stereoIn, ch: i, color: C.stereoIn,
+    getPos: (s: MixerState) => s.stereoInFader[i] ?? 53,
+    getOn:  (s: MixerState) => s.stereoInOn[i]  ?? true,
+    getLvl: (s: MixerState) => s.stereoInLevel[i * 2] ?? 0,
+    matIdx: 8 + i,
+  })),
+  ...Array.from({ length: 4 }, (_, i) => ({
+    label: `OUT ${i + 1}`, attr: ATTR.monoOut, ch: i, color: C.monoOut,
+    getPos: (s: MixerState) => s.monoOutFader[i] ?? 53,
+    getOn:  (s: MixerState) => s.monoOutOn[i]  ?? true,
+    getLvl: (s: MixerState) => s.monoOutLevel[i] ?? 0,
+    matIdx: -1,
+  })),
+  ...Array.from({ length: 2 }, (_, i) => ({
+    label: `REC ${i + 1}`, attr: ATTR.recOut, ch: i, color: C.recOut,
+    getPos: (s: MixerState) => s.recOutFader[i] ?? 53,
+    getOn:  (s: MixerState) => s.recOutOn[i]  ?? true,
+    getLvl: (_: MixerState) => 0,
+    matIdx: -1,
+  })),
+];
+
+const MATRIX_INPUTS = [
+  ...Array.from({ length: 8 }, (_, i) => ({
+    label: `IN ${i + 1}`, color: C.monoIn, srcAttr: 0, srcCh: i, matIdx: i,
+  })),
+  ...Array.from({ length: 2 }, (_, i) => ({
+    label: `ST ${i + 1}`, color: C.stereoIn, srcAttr: 1, srcCh: i, matIdx: 8 + i,
+  })),
+];
+
+const SECTIONS = [
+  { label: "MONO IN",  count: 8,  color: C.monoIn },
+  { label: "ST IN",    count: 2,  color: C.stereoIn },
+  { label: "MONO OUT", count: 4,  color: C.monoOut },
+  { label: "REC OUT",  count: 2,  color: C.recOut },
+];
+
+const FADER_H = 180; // px - track length (= rotated input width)
+
+const SCALE_MARKS = [
+  { pos: 63, label: "+10" },
+  { pos: 58, label: "+6"  },
+  { pos: 53, label: "0"   },
+  { pos: 43, label: "-10" },
+  { pos: 33, label: "-20" },
+  { pos: 18, label: "-40" },
+  { pos: 0,  label: "∞"   },
+];
+
+// ── ChannelStrip ──────────────────────────────────────────────────────────────
+interface StripProps {
   label: string;
+  color: string;
   position: number;
   on: boolean;
   level: number;
-  onFaderChange: (pos: number) => void;
+  onFader: (v: number) => void;
   onToggle: () => void;
-  color: string;
-}) {
+}
+
+function ChannelStrip({ label, color, position, on, level, onFader, onToggle }: StripProps) {
   const db = faderPositionToDb(position);
   const dbStr = formatDb(db);
+  const meterPct = Math.min(100, (level / 72) * 100);
+  const pct0db = (1 - 53 / 63) * 100;
 
   return (
     <div
-      className="flex flex-col items-center gap-1 rounded-xl p-2 shrink-0"
-      style={{
-        width: 68,
-        background: on ? "hsl(220 15% 13%)" : "hsl(220 15% 10%)",
-        border: `1px solid hsl(220 15% 20%)`,
-        opacity: on ? 1 : 0.55,
-      }}
-      data-testid={`channel-strip-${label}`}
+      className="flex flex-col items-center shrink-0 select-none"
+      style={{ width: 70, background: C.panel, borderRight: `1px solid ${C.border}` }}
     >
+      {/* Type color band */}
+      <div style={{ width: "100%", height: 3, background: color, flexShrink: 0 }} />
+
+      {/* Label */}
       <div
-        className="w-full text-center font-bold rounded-lg px-1 py-1 text-xs tracking-wider truncate"
-        style={{ background: color, color: "#fff" }}
+        className="w-full text-center font-mono uppercase"
+        style={{ fontSize: 8, color, paddingTop: 6, paddingBottom: 3, letterSpacing: "0.18em" }}
       >
         {label}
       </div>
 
-      <LevelMeter level={level} />
+      {/* Fader + scale + meter area */}
+      <div className="relative w-full" style={{ height: FADER_H, flexShrink: 0 }}>
+        {/* Scale marks — left 20px */}
+        {SCALE_MARKS.map(({ pos, label: ml }) => (
+          <div
+            key={pos}
+            className="absolute flex items-center"
+            style={{
+              left: 0,
+              width: 20,
+              top: `${(1 - pos / 63) * 100}%`,
+              transform: "translateY(-50%)",
+              justifyContent: "flex-end",
+              gap: 2,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 7,
+                fontFamily: "monospace",
+                lineHeight: 1,
+                color: pos === 53 ? color + "cc" : C.dim,
+              }}
+            >
+              {ml}
+            </span>
+            <div
+              style={{
+                width: pos === 53 ? 5 : 3,
+                height: 1,
+                background: pos === 53 ? color : C.border,
+                opacity: pos === 53 ? 0.7 : 0.5,
+              }}
+            />
+          </div>
+        ))}
 
-      <div className="relative" style={{ width: 44, height: 160 }}>
+        {/* 0dB reference line across track */}
         <div
-          className="absolute rounded"
+          className="absolute pointer-events-none"
           style={{
-            left: "50%",
-            top: 0,
-            bottom: 0,
-            width: 4,
-            transform: "translateX(-50%)",
-            background: "hsl(220 15% 18%)",
-            border: "1px solid hsl(220 15% 26%)",
+            left: 20,
+            right: 8,
+            top: `${pct0db}%`,
+            height: 1,
+            background: color,
+            opacity: 0.2,
           }}
         />
+
+        {/* Fader slider (rotated) */}
         <div
-          className="absolute rounded-sm"
-          style={{
-            left: "50%",
-            width: 2,
-            height: 8,
-            background: "hsl(30 100% 52%)",
-            transform: "translateX(-50%)",
-            top: "calc(100% * (1 - 53/63) - 4px)",
-          }}
-        />
-        <input
-          type="range"
-          min={0}
-          max={63}
-          value={position}
-          onChange={(e) => onFaderChange(parseInt(e.target.value))}
-          className="mixer-fader"
-          data-testid={`fader-${label}`}
-        />
+          className="absolute"
+          style={{ left: 20, right: 8, top: 0, bottom: 0, overflow: "hidden" }}
+        >
+          <input
+            type="range"
+            min={0}
+            max={63}
+            value={position}
+            onChange={(e) => onFader(Number(e.target.value))}
+            className="mixer-fader"
+            style={{ width: FADER_H, height: 44 }}
+            data-testid={`fader-${label}`}
+          />
+        </div>
+
+        {/* Level meter — right 6px */}
+        <div
+          className="absolute right-0 rounded-sm overflow-hidden"
+          style={{ top: 6, bottom: 6, width: 5, background: "#030609" }}
+        >
+          <div
+            className="absolute bottom-0 w-full rounded-sm"
+            style={{
+              height: `${meterPct}%`,
+              background:
+                meterPct > 85 ? C.recOut
+                : meterPct > 65 ? `linear-gradient(to top, ${C.monoOut}, ${C.accent})`
+                : `linear-gradient(to top, ${C.accent}88, ${C.monoIn}88)`,
+              transition: "height 0.07s",
+            }}
+          />
+        </div>
       </div>
 
+      {/* dB readout */}
       <div
-        className="font-mono text-xs text-center rounded px-1 py-0.5"
-        style={{
-          color:
-            db === 0
-              ? "hsl(30 100% 60%)"
-              : db > 0
-              ? "#ef4444"
-              : "#9ca3af",
-          minWidth: 36,
-        }}
+        className="font-mono text-center w-full"
+        style={{ fontSize: 9, color: on ? C.bright : C.dim, paddingTop: 4, paddingBottom: 3, letterSpacing: "0.04em" }}
       >
         {dbStr}
       </div>
 
+      {/* ON / MUTE button */}
       <button
         onClick={onToggle}
-        className="w-full rounded-lg py-1.5 text-xs font-bold uppercase tracking-wide transition-all"
+        className="w-full flex flex-col items-center justify-center gap-1 transition-all"
         style={{
-          background: on ? "hsl(30 100% 52%)" : "hsl(220 15% 18%)",
-          color: on ? "#fff" : "#6b7280",
-          border: `1px solid ${on ? "hsl(30 100% 40%)" : "hsl(220 15% 26%)"}`,
+          height: 44,
+          background: on ? `${C.on}18` : "#060a14",
+          borderTop: `1px solid ${on ? C.on + "44" : C.border}`,
+          borderBottom: `1px solid ${C.border}`,
         }}
-        data-testid={`onoff-${label}`}
+        data-testid={`btn-on-${label}`}
       >
-        {on ? "ON" : "OFF"}
-      </button>
-    </div>
-  );
-}
-
-type MatrixState = ReturnType<typeof useMixerWs>;
-
-function MatrixGrid({
-  state,
-  onToggle,
-  onGainChange,
-}: {
-  state: MatrixState;
-  onToggle: (srcIdx: number, bus: number) => void;
-  onGainChange: (srcIdx: number, bus: number, val: number) => void;
-}) {
-  const [selected, setSelected] = useState<{ src: number; bus: number } | null>(null);
-
-  const sourceLabels = [
-    "IN 1", "IN 2", "IN 3", "IN 4",
-    "IN 5", "IN 6", "IN 7", "IN 8",
-    "ST 1", "ST 2",
-  ];
-  const busLabels = ["Bus 1", "Bus 2", "Bus 3", "Bus 4"];
-
-  const sel = selected;
-  const selGain = sel != null ? (state.inputMatrixGain[sel.src]?.[sel.bus] ?? 0x46) : 0x46;
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-3">
-          Input Matrix — Sources → Buses
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="border-collapse">
-            <thead>
-              <tr>
-                <th className="text-left text-xs text-gray-500 pb-2 pr-4" style={{ minWidth: 56 }}>
-                  Source
-                </th>
-                {busLabels.map((b, i) => (
-                  <th
-                    key={i}
-                    className="text-center text-xs text-gray-400 pb-2 px-1"
-                    style={{ minWidth: 66 }}
-                  >
-                    {b}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sourceLabels.map((src, srcIdx) => (
-                <tr key={srcIdx}>
-                  <td className="text-xs text-gray-300 pr-4 py-1 font-mono font-semibold">
-                    {src}
-                  </td>
-                  {busLabels.map((_, bus) => {
-                    const isOn = state.inputMatrix[srcIdx]?.[bus] ?? false;
-                    const isSel = sel?.src === srcIdx && sel?.bus === bus;
-                    const gainVal = state.inputMatrixGain[srcIdx]?.[bus] ?? 0x46;
-                    const gainDb = crosspointValueToDb(gainVal);
-                    return (
-                      <td key={bus} className="px-1 py-1 text-center">
-                        <button
-                          onClick={() => {
-                            onToggle(srcIdx, bus);
-                            setSelected(isSel ? null : { src: srcIdx, bus });
-                          }}
-                          className="rounded-lg flex flex-col items-center justify-center gap-1 transition-all"
-                          style={{
-                            width: 60,
-                            height: 52,
-                            background: isOn
-                              ? "hsl(30 100% 16%)"
-                              : "hsl(220 15% 15%)",
-                            border: `2px solid ${
-                              isSel
-                                ? "hsl(30 100% 52%)"
-                                : isOn
-                                ? "hsl(30 100% 38%)"
-                                : "hsl(220 15% 24%)"
-                            }`,
-                          }}
-                          data-testid={`matrix-in-${srcIdx}-${bus}`}
-                        >
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{
-                              background: isOn
-                                ? "hsl(30 100% 55%)"
-                                : "hsl(220 15% 30%)",
-                              boxShadow: isOn
-                                ? "0 0 6px hsl(30 100% 55%)"
-                                : "none",
-                            }}
-                          />
-                          <span
-                            className="text-[9px] font-mono"
-                            style={{ color: isOn ? "#e2a430" : "#4b5563" }}
-                          >
-                            {formatDb(gainDb)}
-                          </span>
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {sel != null && (
-          <div
-            className="mt-3 p-3 rounded-xl flex items-center gap-3"
-            style={{
-              background: "hsl(220 15% 14%)",
-              border: "1px solid hsl(220 15% 22%)",
-            }}
-          >
-            <span className="text-sm text-gray-300 shrink-0">
-              {sourceLabels[sel.src]} → {busLabels[sel.bus]} Gain:
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={70}
-              value={selGain}
-              onChange={(e) =>
-                onGainChange(sel.src, sel.bus, parseInt(e.target.value))
-              }
-              className="flex-1"
-              data-testid="matrix-gain-slider"
-            />
-            <span className="text-sm font-mono text-amber-400 w-14 text-right">
-              {formatDb(crosspointValueToDb(selGain))}dB
-            </span>
-            <button
-              onClick={() => setSelected(null)}
-              className="text-gray-500 hover:text-white ml-1 p-1"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-3">
-          Output Matrix — Buses → Rec Out
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="border-collapse">
-            <thead>
-              <tr>
-                <th
-                  className="text-left text-xs text-gray-500 pb-2 pr-4"
-                  style={{ minWidth: 56 }}
-                >
-                  Bus
-                </th>
-                {["Rec L", "Rec R"].map((r, i) => (
-                  <th
-                    key={i}
-                    className="text-center text-xs text-gray-400 pb-2 px-1"
-                    style={{ minWidth: 66 }}
-                  >
-                    {r}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[0, 1, 2, 3].map((bus) => (
-                <tr key={bus}>
-                  <td className="text-xs text-gray-300 pr-4 py-1 font-mono font-semibold">
-                    Bus {bus + 1}
-                  </td>
-                  {[0, 1].map((dst) => {
-                    const isOn = state.outputMatrix[bus]?.[dst] ?? false;
-                    return (
-                      <td key={dst} className="px-1 py-1 text-center">
-                        <button
-                          onClick={() => {
-                            api("/api/matrix/output", {
-                              bus,
-                              dstCh: dst,
-                              on: !isOn,
-                            }).catch(() => {});
-                          }}
-                          className="rounded-lg flex items-center justify-center transition-all"
-                          style={{
-                            width: 60,
-                            height: 52,
-                            background: isOn
-                              ? "hsl(200 70% 18%)"
-                              : "hsl(220 15% 15%)",
-                            border: `2px solid ${
-                              isOn ? "hsl(200 70% 42%)" : "hsl(220 15% 24%)"
-                            }`,
-                          }}
-                          data-testid={`matrix-out-${bus}-${dst}`}
-                        >
-                          <div
-                            className="w-4 h-4 rounded-full"
-                            style={{
-                              background: isOn
-                                ? "hsl(200 70% 55%)"
-                                : "hsl(220 15% 28%)",
-                              boxShadow: isOn
-                                ? "0 0 8px hsl(200 70% 55%)"
-                                : "none",
-                            }}
-                          />
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PresetsPanel({ currentPreset }: { currentPreset: number }) {
-  const { toast } = useToast();
-  const [storing, setStoring] = useState<number | null>(null);
-
-  const loadPreset = async (p: number) => {
-    try {
-      await api("/api/preset/load", { preset: p });
-      toast({ title: `Preset ${p + 1} loaded` });
-    } catch {
-      toast({ title: "Failed to load preset", variant: "destructive" });
-    }
-  };
-
-  const storePreset = async (p: number) => {
-    setStoring(p);
-    try {
-      await api("/api/preset/store", { preset: p });
-      toast({ title: `Preset ${p + 1} saved` });
-    } catch {
-      toast({ title: "Failed to save preset", variant: "destructive" });
-    } finally {
-      setStoring(null);
-    }
-  };
-
-  return (
-    <div
-      className="grid grid-cols-4 gap-3"
-      data-testid="presets-panel"
-    >
-      {Array.from({ length: 16 }, (_, i) => {
-        const isActive = i === currentPreset;
-        return (
-          <div
-            key={i}
-            className="rounded-xl flex flex-col items-center gap-2 p-3"
-            style={{
-              background: isActive
-                ? "hsl(30 100% 14%)"
-                : "hsl(220 15% 13%)",
-              border: `2px solid ${
-                isActive
-                  ? "hsl(30 100% 42%)"
-                  : "hsl(220 15% 22%)"
-              }`,
-            }}
-            data-testid={`preset-slot-${i}`}
-          >
-            <div
-              className="font-bold text-base"
-              style={{
-                color: isActive ? "hsl(30 100% 65%)" : "#9ca3af",
-              }}
-            >
-              P{i + 1}
-            </div>
-            {isActive && (
-              <div className="text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: "hsl(30 100% 20%)", color: "hsl(30 100% 65%)" }}>
-                Active
-              </div>
-            )}
-            <div className="flex gap-1 w-full mt-1">
-              <button
-                onClick={() => loadPreset(i)}
-                className="flex-1 flex items-center justify-center rounded-lg py-2 transition-all text-xs gap-1"
-                style={{
-                  background: "hsl(220 15% 20%)",
-                  color: "#9ca3af",
-                  border: "1px solid hsl(220 15% 28%)",
-                }}
-                data-testid={`load-preset-${i}`}
-              >
-                <FolderOpen size={11} />
-                Load
-              </button>
-              <button
-                onClick={() => storePreset(i)}
-                disabled={storing === i}
-                className="flex-1 flex items-center justify-center rounded-lg py-2 transition-all text-xs gap-1"
-                style={{
-                  background: "hsl(220 15% 20%)",
-                  color: "#9ca3af",
-                  border: "1px solid hsl(220 15% 28%)",
-                }}
-                data-testid={`store-preset-${i}`}
-              >
-                <Save size={11} />
-                {storing === i ? "..." : "Save"}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ConnectForm({
-  initialIp,
-  initialPort,
-  onDone,
-}: {
-  initialIp?: string;
-  initialPort?: number;
-  onDone?: () => void;
-}) {
-  const [ip, setIp] = useState(initialIp || "");
-  const [port, setPort] = useState(String(initialPort || 3000));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const { toast } = useToast();
-
-  const handleConnect = async () => {
-    if (!ip.trim()) {
-      setError("Enter the mixer IP address");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await api("/api/connect", {
-        ip: ip.trim(),
-        port: parseInt(port) || 3000,
-      });
-      toast({ title: "Connecting to mixer..." });
-      onDone?.();
-    } catch (e: any) {
-      setError(e.message || "Connection failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">
-          Mixer IP Address
-        </label>
-        <input
-          type="text"
-          value={ip}
-          onChange={(e) => setIp(e.target.value)}
-          placeholder="192.168.1.100"
-          className="w-full rounded-xl px-4 py-3 text-base"
-          style={{
-            background: "hsl(220 15% 16%)",
-            border: "1px solid hsl(220 15% 26%)",
-            color: "#fff",
-            outline: "none",
-          }}
-          data-testid="input-mixer-ip"
-          onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">
-          TCP Port
-        </label>
-        <input
-          type="number"
-          value={port}
-          onChange={(e) => setPort(e.target.value)}
-          className="w-full rounded-xl px-4 py-3 text-base"
-          style={{
-            background: "hsl(220 15% 16%)",
-            border: "1px solid hsl(220 15% 26%)",
-            color: "#fff",
-            outline: "none",
-          }}
-          data-testid="input-mixer-port"
-          onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-        />
-      </div>
-      {error && (
         <div
-          className="text-sm rounded-xl px-4 py-3"
+          className={on ? "led-on" : ""}
           style={{
-            background: "hsl(0 60% 12%)",
-            color: "#f87171",
-            border: "1px solid hsl(0 60% 24%)",
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: on ? C.on : "#141e2e",
+            boxShadow: on ? `0 0 5px 2px ${C.on}, 0 0 10px ${C.on}88` : "inset 0 1px 2px #000",
           }}
+        />
+        <span
+          className="font-mono uppercase"
+          style={{ fontSize: 7, letterSpacing: "0.14em", color: on ? C.on : C.dim }}
         >
-          {error}
+          {on ? "ON" : "MUTE"}
+        </span>
+      </button>
+
+      <div style={{ height: 5 }} />
+    </div>
+  );
+}
+
+// ── MatrixGrid ────────────────────────────────────────────────────────────────
+interface MatrixGridProps {
+  mixState: MixerState;
+  onToggleInput: (srcAttr: number, srcCh: number, bus: number, cur: boolean) => void;
+  onToggleOutput: (bus: number, dstCh: number, cur: boolean) => void;
+  onSetGain: (srcAttr: number, srcCh: number, bus: number, value: number) => void;
+}
+
+const GAIN_OPTS = [
+  { value: 70, label: "+10" },
+  { value: 60, label: "+4"  },
+  { value: 46, label: "0"   },
+  { value: 36, label: "-6"  },
+  { value: 26, label: "-16" },
+  { value: 6,  label: "-36" },
+  { value: 0,  label: "–∞"  },
+];
+
+function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: MatrixGridProps) {
+  const [gainEdit, setGainEdit] = useState<{ srcAttr: number; srcCh: number; matIdx: number; bus: number } | null>(null);
+
+  const BUS_LABELS = ["BUS 1", "BUS 2", "BUS 3", "BUS 4"];
+  const OUT_LABELS  = ["OUT 1", "OUT 2", "OUT 3", "OUT 4"];
+  const REC_LABELS  = ["REC L", "REC R"];
+
+  return (
+    <div className="flex flex-col h-full overflow-auto p-4 gap-5">
+      {/* Gain editor sheet */}
+      {gainEdit !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+          onClick={() => setGainEdit(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl p-5"
+            style={{ background: C.raised, border: `1px solid ${C.border}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.accent }}>
+                {MATRIX_INPUTS[gainEdit.matIdx]?.label} → {BUS_LABELS[gainEdit.bus]} Gain
+              </span>
+              <button onClick={() => setGainEdit(null)}><X size={16} color={C.dim} /></button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {GAIN_OPTS.map(({ value, label }) => {
+                const cur = mixState.inputMatrixGain[gainEdit.matIdx]?.[gainEdit.bus] ?? 46;
+                const active = cur === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => {
+                      onSetGain(gainEdit.srcAttr, gainEdit.srcCh, gainEdit.bus, value);
+                      setGainEdit(null);
+                    }}
+                    className="rounded-xl py-3 font-mono text-sm transition-all"
+                    style={{
+                      background: active ? `${C.accent}28` : C.panel,
+                      border: `1px solid ${active ? C.accent : C.border}`,
+                      color: active ? C.accent : C.text,
+                      boxShadow: active ? `0 0 10px ${C.accent}44` : "none",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
-      <button
-        onClick={handleConnect}
-        disabled={busy}
-        className="w-full rounded-xl py-4 font-bold text-white text-base tracking-wide transition-all"
-        style={{
-          background: busy ? "hsl(30 100% 35%)" : "hsl(30 100% 52%)",
-        }}
-        data-testid="button-connect"
-      >
-        {busy ? "Connecting..." : "Connect to Mixer"}
-      </button>
+
+      {/* Input → Bus section */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div style={{ width: 2, height: 14, background: C.accent, borderRadius: 1 }} />
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.accent }}>
+            Input → Mix Bus
+          </span>
+        </div>
+
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.panel }}>
+          {/* Bus header row */}
+          <div className="flex" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ width: 76, minWidth: 76 }} />
+            {BUS_LABELS.map((b, bi) => (
+              <div
+                key={bi}
+                className="flex-1 text-center font-mono py-2 uppercase"
+                style={{ fontSize: 9, color: C.accent, letterSpacing: "0.15em", borderLeft: `1px solid ${C.border}` }}
+              >
+                {b}
+              </div>
+            ))}
+          </div>
+
+          {MATRIX_INPUTS.map(({ label, color, srcAttr, srcCh, matIdx }) => (
+            <div
+              key={matIdx}
+              className="flex"
+              style={{ borderBottom: `1px solid ${C.border}` }}
+            >
+              {/* Source label */}
+              <div
+                className="flex items-center gap-1.5 px-2 font-mono"
+                style={{ width: 76, minWidth: 76, fontSize: 9, color, borderRight: `1px solid ${C.border}` }}
+              >
+                <div style={{ width: 3, height: 14, background: color, borderRadius: 2, opacity: 0.7 }} />
+                {label}
+              </div>
+
+              {/* Bus toggle cells */}
+              {[0, 1, 2, 3].map((bus) => {
+                const on = mixState.inputMatrix[matIdx]?.[bus] === true;
+                const gainVal = mixState.inputMatrixGain[matIdx]?.[bus] ?? 46;
+                const gainDb = crosspointValueToDb(gainVal);
+                const gainStr = gainDb === 0 ? "" : formatDb(gainDb);
+                return (
+                  <div
+                    key={bus}
+                    className="flex-1 flex flex-col items-center justify-center py-2 gap-1"
+                    style={{ borderLeft: `1px solid ${C.border}`, minHeight: 56 }}
+                  >
+                    <button
+                      onClick={() => onToggleInput(srcAttr, srcCh, bus, on)}
+                      className="rounded-lg transition-all flex items-center justify-center"
+                      style={{
+                        width: 42,
+                        height: 32,
+                        background: on ? `${color}22` : "#040810",
+                        border: `1px solid ${on ? color + "88" : C.border}`,
+                        boxShadow: on ? `0 0 10px ${color}44` : "none",
+                      }}
+                      data-testid={`matrix-in-${matIdx}-${bus}`}
+                    >
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: on ? color : "#111d2e",
+                          boxShadow: on ? `0 0 5px 2px ${color}` : "inset 0 1px 2px #000",
+                        }}
+                      />
+                    </button>
+                    {on && gainStr && (
+                      <button
+                        onClick={() => setGainEdit({ srcAttr, srcCh, matIdx, bus })}
+                        className="font-mono"
+                        style={{ fontSize: 8, color: `${color}bb`, lineHeight: 1 }}
+                      >
+                        {gainStr}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Output → Rec section */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div style={{ width: 2, height: 14, background: C.monoOut, borderRadius: 1 }} />
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: C.monoOut }}>
+            Output → Rec Bus
+          </span>
+        </div>
+
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.panel }}>
+          {/* Output header row */}
+          <div className="flex" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ width: 76, minWidth: 76 }} />
+            {OUT_LABELS.map((b, bi) => (
+              <div
+                key={bi}
+                className="flex-1 text-center font-mono py-2 uppercase"
+                style={{ fontSize: 9, color: C.monoOut, letterSpacing: "0.15em", borderLeft: `1px solid ${C.border}` }}
+              >
+                {b}
+              </div>
+            ))}
+          </div>
+
+          {REC_LABELS.map((rowLabel, dstCh) => (
+            <div
+              key={dstCh}
+              className="flex"
+              style={{ borderBottom: dstCh < 1 ? `1px solid ${C.border}` : "none" }}
+            >
+              <div
+                className="flex items-center gap-1.5 px-2 font-mono"
+                style={{ width: 76, minWidth: 76, fontSize: 9, color: C.recOut, borderRight: `1px solid ${C.border}` }}
+              >
+                <div style={{ width: 3, height: 14, background: C.recOut, borderRadius: 2, opacity: 0.7 }} />
+                {rowLabel}
+              </div>
+              {[0, 1, 2, 3].map((bus) => {
+                const on = mixState.outputMatrix[bus]?.[dstCh] === true;
+                return (
+                  <div
+                    key={bus}
+                    className="flex-1 flex items-center justify-center py-3"
+                    style={{ borderLeft: `1px solid ${C.border}` }}
+                  >
+                    <button
+                      onClick={() => onToggleOutput(bus, dstCh, on)}
+                      className="rounded-lg transition-all flex items-center justify-center"
+                      style={{
+                        width: 42,
+                        height: 32,
+                        background: on ? `${C.recOut}22` : "#040810",
+                        border: `1px solid ${on ? C.recOut + "88" : C.border}`,
+                        boxShadow: on ? `0 0 10px ${C.recOut}44` : "none",
+                      }}
+                      data-testid={`matrix-out-${dstCh}-${bus}`}
+                    >
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: on ? C.recOut : "#111d2e",
+                          boxShadow: on ? `0 0 5px 2px ${C.recOut}` : "inset 0 1px 2px #000",
+                        }}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-type Tab = "channels" | "matrix" | "presets";
+// ── PresetsPanel ──────────────────────────────────────────────────────────────
+interface PresetsPanelProps {
+  currentPreset: number;
+  onLoad: (preset: number) => void;
+  onStore: (preset: number) => void;
+}
 
-const MONO_IN_COLOR = "hsl(220 70% 42%)";
-const STEREO_IN_COLOR = "hsl(270 60% 48%)";
-const MONO_OUT_COLOR = "hsl(140 55% 33%)";
-const REC_OUT_COLOR = "hsl(0 65% 42%)";
+function PresetsPanel({ currentPreset, onLoad, onStore }: PresetsPanelProps) {
+  const [mode, setMode] = useState<"load" | "store">("load");
+  const [confirm, setConfirm] = useState<number | null>(null);
 
-export default function Home() {
-  const state = useMixerWs();
-  const { toast } = useToast();
-  const [tab, setTab] = useState<Tab>("channels");
-  const [showSettings, setShowSettings] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [serverInfo, setServerInfo] = useState<{
-    lanIP?: string;
-    port?: number;
-  } | null>(null);
-
-  const serverInfoFetchedRef = useRef(false);
-  if (!serverInfoFetchedRef.current) {
-    serverInfoFetchedRef.current = true;
-    fetch("/api/info")
-      .then((r) => r.json())
-      .then((d) => setServerInfo(d))
-      .catch(() => {});
+  function handleTap(preset: number) {
+    if (mode === "load") {
+      onLoad(preset);
+    } else {
+      if (confirm === preset) {
+        onStore(preset);
+        setConfirm(null);
+      } else {
+        setConfirm(preset);
+        setTimeout(() => setConfirm(null), 2000);
+      }
+    }
   }
 
-  const setFader = useCallback(
-    (attr: number, ch: number, pos: number) => {
-      api("/api/fader", { attr, ch, position: pos }).catch(() => {});
-    },
-    []
-  );
+  const activeColor = mode === "store" ? C.on : C.accent;
 
-  const toggleOnOff = useCallback(
-    (attr: number, ch: number, currentOn: boolean) => {
-      api("/api/onoff", { attr, ch, on: !currentOn }).catch(() => {});
-    },
-    []
-  );
+  return (
+    <div className="flex flex-col h-full overflow-auto p-4 gap-4">
+      {/* Mode toggle */}
+      <div
+        className="flex rounded-2xl p-1 gap-1 self-start"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+      >
+        {(["load", "store"] as const).map((m) => {
+          const mc = m === "store" ? C.on : C.accent;
+          return (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setConfirm(null); }}
+              className="rounded-xl px-6 py-2 font-mono uppercase tracking-widest transition-all"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.2em",
+                background: mode === m ? `${mc}1e` : "transparent",
+                color: mode === m ? mc : C.dim,
+                border: `1px solid ${mode === m ? mc + "55" : "transparent"}`,
+                boxShadow: mode === m ? `0 0 12px ${mc}22` : "none",
+              }}
+              data-testid={`btn-mode-${m}`}
+            >
+              {m === "load" ? "▶ Load" : "● Store"}
+            </button>
+          );
+        })}
+      </div>
 
-  const toggleInputMatrix = useCallback(
-    (srcIdx: number, bus: number) => {
-      const srcAttr = srcIdx < 8 ? 0 : 1;
-      const srcCh = srcIdx < 8 ? srcIdx : srcIdx - 8;
-      const currentOn = state.inputMatrix[srcIdx]?.[bus] ?? false;
-      api("/api/matrix/input", {
-        srcAttr,
-        srcCh,
-        bus,
-        on: !currentOn,
-      }).catch(() => {});
-    },
-    [state.inputMatrix]
-  );
+      {mode === "store" && (
+        <div
+          className="rounded-xl px-4 py-2.5 text-xs font-mono"
+          style={{ background: `${C.on}0e`, border: `1px solid ${C.on}33`, color: C.on }}
+        >
+          Tap a slot once to select it, tap again to confirm store.
+        </div>
+      )}
 
-  const setInputGain = useCallback(
-    (srcIdx: number, bus: number, val: number) => {
-      const srcAttr = srcIdx < 8 ? 0 : 1;
-      const srcCh = srcIdx < 8 ? srcIdx : srcIdx - 8;
-      api("/api/matrix/input-gain", {
-        srcAttr,
-        srcCh,
-        bus,
-        value: val,
-      }).catch(() => {});
-    },
-    []
-  );
+      {/* 4 × 4 grid */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        {Array.from({ length: 16 }, (_, i) => {
+          const preset = i;          // 0-indexed sent to API
+          const slotNum = i + 1;     // 1-indexed shown to user
+          const isActive  = currentPreset === preset;
+          const isConfirm = confirm === preset;
 
-  const disconnectMixer = async () => {
-    await api("/api/disconnect", {});
-    toast({ title: "Disconnected from mixer" });
+          return (
+            <button
+              key={preset}
+              onClick={() => handleTap(preset)}
+              className="rounded-2xl flex flex-col items-center justify-center gap-2 transition-all active:scale-95"
+              style={{
+                height: 84,
+                background: isActive
+                  ? `${activeColor}1e`
+                  : isConfirm
+                  ? `${C.on}14`
+                  : C.panel,
+                border: `1px solid ${
+                  isActive  ? activeColor + "77" :
+                  isConfirm ? C.on + "55" :
+                  C.border
+                }`,
+                boxShadow: isActive
+                  ? `0 0 20px ${activeColor}33, inset 0 0 24px ${activeColor}08`
+                  : isConfirm
+                  ? `0 0 14px ${C.on}22`
+                  : "none",
+              }}
+              data-testid={`btn-preset-${slotNum}`}
+            >
+              <span
+                className="font-mono font-bold tabular-nums"
+                style={{
+                  fontSize: 24,
+                  lineHeight: 1,
+                  color: isActive ? activeColor : isConfirm ? C.on : C.dim,
+                }}
+              >
+                {slotNum.toString().padStart(2, "0")}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <div
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: isActive ? activeColor : "#0e1a28",
+                    boxShadow: isActive ? `0 0 4px 2px ${activeColor}` : "none",
+                  }}
+                />
+                <span
+                  className="font-mono uppercase"
+                  style={{
+                    fontSize: 7,
+                    letterSpacing: "0.2em",
+                    color: isActive ? activeColor : isConfirm ? C.on : C.dim,
+                  }}
+                >
+                  {isActive ? "ACTIVE" : isConfirm ? "CONFIRM?" : "PRESET"}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── ConnectForm ───────────────────────────────────────────────────────────────
+function ConnectForm({ onDemo }: { onDemo: () => void }) {
+  const [ip, setIp] = useState("");
+  const [port, setPort] = useState("3000");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  async function connect() {
+    if (!ip.trim()) return;
+    setLoading(true);
+    try {
+      await apiRequest("POST", "/api/connect", { ip: ip.trim(), port: parseInt(port) });
+    } catch {
+      toast({ title: "Connection failed", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputBase: React.CSSProperties = {
+    background: "#050912",
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    color: C.bright,
+    fontSize: 15,
+    padding: "13px 15px",
+    fontFamily: "monospace",
+    outline: "none",
+    width: "100%",
+    WebkitAppearance: "none",
   };
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: "hsl(220 20% 7%)", color: "#e2e8f0" }}
+      className="flex flex-col h-full items-center justify-center p-6"
+      style={{ background: C.bg }}
     >
-      <header
-        className="flex items-center px-4 py-3 gap-3 shrink-0"
-        style={{
-          background: "hsl(220 20% 10%)",
-          borderBottom: "1px solid hsl(220 15% 18%)",
-        }}
+      <div
+        className="w-full max-w-sm rounded-3xl p-8"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
       >
-        <div className="flex items-center gap-2">
+        {/* Logo */}
+        <div className="text-center mb-8">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm"
-            style={{ background: "hsl(30 100% 52%)" }}
+            className="mx-auto flex items-center justify-center font-black rounded-2xl mb-4"
+            style={{
+              width: 60,
+              height: 60,
+              fontSize: 26,
+              background: `linear-gradient(135deg, ${C.accent}30, ${C.accent}10)`,
+              border: `1px solid ${C.accent}44`,
+              color: C.accent,
+              boxShadow: `0 0 30px ${C.accent}22`,
+            }}
           >
             M
           </div>
-          <div>
-            <div className="font-bold text-sm tracking-wide leading-none">
-              M-864D
-            </div>
-            <div className="text-[9px] uppercase tracking-widest text-gray-500 mt-0.5">
-              Mixer Controller
-            </div>
+          <div
+            className="font-mono font-bold uppercase"
+            style={{ fontSize: 13, color: C.bright, letterSpacing: "0.35em" }}
+          >
+            M-864D
+          </div>
+          <div
+            className="font-mono mt-1"
+            style={{ fontSize: 10, color: C.dim, letterSpacing: "0.18em" }}
+          >
+            Digital Stereo Mixer
           </div>
         </div>
 
-        <div className="flex-1" />
+        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.2em" }}>
+          Mixer IP
+        </label>
+        <input
+          style={{ ...inputBase, marginTop: 6, marginBottom: 12 }}
+          type="text"
+          placeholder="192.168.1.100"
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && connect()}
+          data-testid="input-ip"
+        />
 
-        {state.connected ? (
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-            style={{
-              background: "hsl(140 60% 8%)",
-              border: "1px solid hsl(140 60% 22%)",
-              color: "hsl(140 60% 55%)",
-            }}
-            data-testid="status-connected"
-          >
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{
-                background: "hsl(140 60% 55%)",
-                boxShadow: "0 0 6px hsl(140 60% 55%)",
-                animation: "pulse 2s infinite",
-              }}
-            />
-            {state.ip}:{state.port}
-          </div>
-        ) : (
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-            style={{
-              background: "hsl(0 60% 8%)",
-              border: "1px solid hsl(0 60% 22%)",
-              color: "hsl(0 60% 55%)",
-            }}
-            data-testid="status-disconnected"
-          >
-            <WifiOff size={12} />
-            Not connected
-          </div>
-        )}
+        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.2em" }}>
+          Port
+        </label>
+        <input
+          style={{ ...inputBase, marginTop: 6, marginBottom: 20 }}
+          type="number"
+          value={port}
+          onChange={(e) => setPort(e.target.value)}
+          data-testid="input-port"
+        />
 
         <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="p-2 rounded-xl transition-all"
+          onClick={connect}
+          disabled={loading || !ip.trim()}
+          className="w-full rounded-2xl py-3.5 font-mono uppercase tracking-widest transition-all"
           style={{
-            background: showSettings
-              ? "hsl(30 100% 18%)"
-              : "hsl(220 15% 16%)",
-            color: showSettings ? "hsl(30 100% 60%)" : "#9ca3af",
+            fontSize: 11,
+            letterSpacing: "0.22em",
+            background: `linear-gradient(135deg, ${C.accent}20, ${C.accent}0c)`,
+            border: `1px solid ${C.accent}55`,
+            color: C.accent,
+            boxShadow: `0 0 18px ${C.accent}1a`,
+            opacity: loading || !ip.trim() ? 0.5 : 1,
           }}
-          data-testid="button-settings"
+          data-testid="btn-connect"
         >
-          <Settings size={18} />
+          {loading ? "Connecting…" : "Connect"}
         </button>
-      </header>
 
-      {showSettings && (
-        <div
-          className="shrink-0 p-4"
+        <div className="flex items-center gap-3 my-5">
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+          <span className="font-mono uppercase" style={{ fontSize: 8, color: C.dim }}>or</span>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+        </div>
+
+        <button
+          onClick={onDemo}
+          className="w-full rounded-2xl py-3.5 font-mono uppercase tracking-widest transition-all"
           style={{
-            background: "hsl(220 20% 9%)",
-            borderBottom: "1px solid hsl(220 15% 18%)",
+            fontSize: 10,
+            letterSpacing: "0.18em",
+            background: C.raised,
+            border: `1px solid ${C.border}`,
+            color: C.dim,
           }}
+          data-testid="btn-demo-mode"
         >
-          <div className="max-w-sm mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold text-gray-300">
-                Mixer Connection
-              </span>
-              {state.connected && (
-                <button
-                  onClick={disconnectMixer}
-                  className="text-xs px-3 py-1.5 rounded-lg"
-                  style={{
-                    color: "#f87171",
-                    border: "1px solid hsl(0 60% 24%)",
-                    background: "hsl(0 60% 10%)",
-                  }}
-                  data-testid="button-disconnect"
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-            <ConnectForm
-              initialIp={state.ip}
-              initialPort={state.port}
-              onDone={() => setShowSettings(false)}
-            />
-            {serverInfo?.lanIP && (
-              <div
-                className="mt-4 p-3 rounded-xl"
-                style={{
-                  background: "hsl(220 15% 14%)",
-                  border: "1px solid hsl(220 15% 22%)",
-                }}
-              >
-                <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                  Network address for tablets
-                </div>
-                <div className="font-mono text-sm text-amber-400">
-                  http://{serverInfo.lanIP}:{serverInfo.port}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          Preview Interface
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      {!state.connected && !showSettings && !demoMode && (
-        <div className="flex-1 flex items-center justify-center p-8">
+// ── SettingsPanel ─────────────────────────────────────────────────────────────
+function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: MixerState }) {
+  const [ip, setIp] = useState(wsState.ip || "");
+  const [port, setPort] = useState(String(wsState.port || 3000));
+  const { toast } = useToast();
+
+  async function handleConnect() {
+    try {
+      await apiRequest("POST", "/api/connect", { ip: ip.trim(), port: parseInt(port) });
+      onClose();
+    } catch {
+      toast({ title: "Connection failed", variant: "destructive" });
+    }
+  }
+
+  async function handleDisconnect() {
+    try {
+      await apiRequest("POST", "/api/disconnect", {});
+      onClose();
+    } catch {
+      toast({ title: "Disconnect failed", variant: "destructive" });
+    }
+  }
+
+  const inputBase: React.CSSProperties = {
+    background: "#050912",
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    color: C.bright,
+    fontSize: 14,
+    padding: "11px 13px",
+    fontFamily: "monospace",
+    outline: "none",
+    width: "100%",
+  };
+
+  return (
+    <div
+      className="flex flex-col h-full overflow-auto p-5 gap-4"
+      style={{ background: C.bg }}
+    >
+      <div className="flex items-center justify-between">
+        <span
+          className="font-mono uppercase tracking-widest"
+          style={{ fontSize: 10, color: C.accent, letterSpacing: "0.28em" }}
+        >
+          Settings
+        </span>
+        <button onClick={onClose}><X size={17} color={C.dim} /></button>
+      </div>
+
+      {/* Status indicator */}
+      <div
+        className="flex items-center gap-3 rounded-2xl p-4"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+      >
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: wsState.connected ? C.monoOut : C.dim,
+            boxShadow: wsState.connected ? `0 0 6px 2px ${C.monoOut}` : "none",
+          }}
+        />
+        <div>
           <div
-            className="w-full max-w-sm rounded-2xl p-8"
-            style={{
-              background: "hsl(220 20% 10%)",
-              border: "1px solid hsl(220 15% 20%)",
-            }}
+            className="font-mono"
+            style={{ fontSize: 12, color: wsState.connected ? C.monoOut : C.dim }}
           >
-            <div className="text-center mb-6">
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl mx-auto mb-4"
-                style={{ background: "hsl(30 100% 52%)" }}
-              >
-                M
-              </div>
-              <h1 className="text-xl font-bold">M-864D Controller</h1>
-              <p className="text-sm text-gray-400 mt-1">
-                Enter the mixer's IP address to connect
-              </p>
-            </div>
-            <ConnectForm />
-            <div className="mt-4 flex items-center gap-3">
-              <div className="h-px flex-1" style={{ background: "hsl(220 15% 22%)" }} />
-              <span className="text-xs text-gray-600 uppercase tracking-wider">or</span>
-              <div className="h-px flex-1" style={{ background: "hsl(220 15% 22%)" }} />
-            </div>
-            <button
-              onClick={() => setDemoMode(true)}
-              className="w-full mt-4 rounded-xl py-3 text-sm font-semibold transition-all"
-              style={{
-                background: "hsl(220 15% 16%)",
-                color: "#9ca3af",
-                border: "1px solid hsl(220 15% 26%)",
-              }}
-              data-testid="button-demo-mode"
-            >
-              Preview interface (no mixer)
-            </button>
+            {wsState.connected ? "Connected" : "Disconnected"}
           </div>
-        </div>
-      )}
-
-      {(state.connected || demoMode) && (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {demoMode && !state.connected && (
-            <div
-              className="flex items-center justify-between px-4 py-2 text-xs shrink-0"
-              style={{ background: "hsl(40 80% 12%)", borderBottom: "1px solid hsl(40 80% 22%)", color: "hsl(40 90% 65%)" }}
-            >
-              <span>Preview mode — controls are not connected to a real mixer</span>
-              <button
-                onClick={() => setDemoMode(false)}
-                className="flex items-center gap-1 px-2 py-1 rounded hover:opacity-70"
-                style={{ background: "hsl(40 80% 18%)", border: "1px solid hsl(40 80% 28%)" }}
-              >
-                <X size={11} /> Exit preview
-              </button>
+          {wsState.connected && wsState.ip && (
+            <div className="font-mono" style={{ fontSize: 10, color: C.dim }}>
+              {wsState.ip}:{wsState.port}
             </div>
           )}
-          <div
-            className="flex gap-1 px-4 pt-3 shrink-0"
-            style={{ borderBottom: "1px solid hsl(220 15% 18%)" }}
+        </div>
+      </div>
+
+      {/* Connection form */}
+      <div
+        className="rounded-2xl p-4 flex flex-col gap-3"
+        style={{ background: C.panel, border: `1px solid ${C.border}` }}
+      >
+        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}>
+          IP Address
+        </label>
+        <input
+          style={inputBase}
+          type="text"
+          placeholder="192.168.1.100"
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+          data-testid="settings-input-ip"
+        />
+        <label className="font-mono uppercase" style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}>
+          Port
+        </label>
+        <input
+          style={inputBase}
+          type="number"
+          value={port}
+          onChange={(e) => setPort(e.target.value)}
+          data-testid="settings-input-port"
+        />
+        <button
+          onClick={handleConnect}
+          className="rounded-xl py-3 font-mono uppercase tracking-widest"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.2em",
+            background: `${C.accent}1e`,
+            border: `1px solid ${C.accent}44`,
+            color: C.accent,
+          }}
+          data-testid="settings-btn-connect"
+        >
+          Connect
+        </button>
+        {wsState.connected && (
+          <button
+            onClick={handleDisconnect}
+            className="rounded-xl py-3 font-mono uppercase tracking-widest"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.2em",
+              background: `${C.recOut}14`,
+              border: `1px solid ${C.recOut}33`,
+              color: C.recOut,
+            }}
+            data-testid="settings-btn-disconnect"
           >
-            {(["channels", "matrix", "presets"] as Tab[]).map((t) => (
+            Disconnect
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Home ──────────────────────────────────────────────────────────────────────
+export default function Home() {
+  const wsState = useMixerWs();
+  const [tab, setTab] = useState<Tab>("channels");
+  const [showSettings, setShowSettings] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
+  // Local state for demo mode (so controls feel responsive)
+  const [demoState, setDemoState] = useState<MixerState>(defaultMixerState);
+  const { toast } = useToast();
+
+  const isActive = wsState.connected || demoMode;
+  // Use real ws state when connected, demo state otherwise
+  const mixState: MixerState = wsState.connected ? wsState : demoState;
+
+  // ── Fader ──────────────────────────────────────────────────────────────────
+  const setFader = useCallback(
+    async (attr: number, ch: number, position: number) => {
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => {
+          const next = { ...prev };
+          if (attr === 0) { next.monoInFader = [...prev.monoInFader]; next.monoInFader[ch] = position; }
+          if (attr === 1) { next.stereoInFader = [...prev.stereoInFader]; next.stereoInFader[ch] = position; }
+          if (attr === 2) { next.monoOutFader = [...prev.monoOutFader]; next.monoOutFader[ch] = position; }
+          if (attr === 3) { next.recOutFader = [...prev.recOutFader]; next.recOutFader[ch] = position; }
+          return next;
+        });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/fader", { attr, ch, position });
+      } catch {
+        toast({ title: "Fader command failed", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  // ── On/Off ─────────────────────────────────────────────────────────────────
+  const toggleOn = useCallback(
+    async (attr: number, ch: number, curOn: boolean) => {
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => {
+          const next = { ...prev };
+          if (attr === 0) { next.monoInOn = [...prev.monoInOn]; next.monoInOn[ch] = !curOn; }
+          if (attr === 1) { next.stereoInOn = [...prev.stereoInOn]; next.stereoInOn[ch] = !curOn; }
+          if (attr === 2) { next.monoOutOn = [...prev.monoOutOn]; next.monoOutOn[ch] = !curOn; }
+          if (attr === 3) { next.recOutOn = [...prev.recOutOn]; next.recOutOn[ch] = !curOn; }
+          return next;
+        });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/onoff", { attr, ch, on: !curOn });
+      } catch {
+        toast({ title: "On/off command failed", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  // ── Matrix input toggle ────────────────────────────────────────────────────
+  const toggleInputMatrix = useCallback(
+    async (srcAttr: number, srcCh: number, bus: number, cur: boolean) => {
+      const matIdx = srcAttr === 0 ? srcCh : 8 + srcCh;
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => {
+          const next = { ...prev };
+          next.inputMatrix = prev.inputMatrix.map((row, ri) =>
+            ri === matIdx ? row.map((v, bi) => (bi === bus ? !cur : v)) : row,
+          );
+          return next;
+        });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/matrix/input", { srcAttr, srcCh, bus, on: !cur });
+      } catch {
+        toast({ title: "Matrix command failed", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  // ── Matrix output toggle ───────────────────────────────────────────────────
+  const toggleOutputMatrix = useCallback(
+    async (bus: number, dstCh: number, cur: boolean) => {
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => {
+          const next = { ...prev };
+          next.outputMatrix = prev.outputMatrix.map((row, bi) =>
+            bi === bus ? row.map((v, di) => (di === dstCh ? !cur : v)) : row,
+          );
+          return next;
+        });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/matrix/output", { bus, dstCh, on: !cur });
+      } catch {
+        toast({ title: "Matrix command failed", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  // ── Crosspoint gain ────────────────────────────────────────────────────────
+  const setInputGain = useCallback(
+    async (srcAttr: number, srcCh: number, bus: number, value: number) => {
+      const matIdx = srcAttr === 0 ? srcCh : 8 + srcCh;
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => {
+          const next = { ...prev };
+          next.inputMatrixGain = prev.inputMatrixGain.map((row, ri) =>
+            ri === matIdx ? row.map((v, bi) => (bi === bus ? value : v)) : row,
+          );
+          return next;
+        });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/matrix/input-gain", { srcAttr, srcCh, bus, value });
+      } catch {
+        toast({ title: "Gain command failed", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  // ── Presets ────────────────────────────────────────────────────────────────
+  const loadPreset = useCallback(
+    async (preset: number) => {
+      if (demoMode && !wsState.connected) {
+        setDemoState((prev) => ({ ...prev, currentPreset: preset }));
+        toast({ title: `Preset ${preset + 1} loaded` });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/preset/load", { preset });
+        toast({ title: `Preset ${preset + 1} loaded` });
+      } catch {
+        toast({ title: "Failed to load preset", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  const storePreset = useCallback(
+    async (preset: number) => {
+      if (demoMode && !wsState.connected) {
+        toast({ title: `Preset ${preset + 1} stored (preview)` });
+        return;
+      }
+      try {
+        await apiRequest("POST", "/api/preset/store", { preset });
+        toast({ title: `Preset ${preset + 1} stored` });
+      } catch {
+        toast({ title: "Failed to store preset", variant: "destructive" });
+      }
+    },
+    [demoMode, wsState.connected, toast],
+  );
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "channels", label: "Channels" },
+    { id: "matrix",   label: "Matrix"   },
+    { id: "presets",  label: "Presets"  },
+  ];
+
+  return (
+    <div
+      className="flex flex-col dsp-screen"
+      style={{ minHeight: "100dvh", maxHeight: "100dvh", overflow: "hidden", color: C.bright }}
+    >
+      {/* ── Header bar ── */}
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: 46, background: C.panel, borderBottom: `1px solid ${C.border}` }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: wsState.connected ? C.monoOut : demoMode ? "#996600" : C.dim,
+              boxShadow: wsState.connected
+                ? `0 0 6px 2px ${C.monoOut}`
+                : demoMode
+                ? "0 0 6px 2px #996600"
+                : "none",
+            }}
+          />
+          <span
+            className="font-mono font-bold uppercase"
+            style={{ fontSize: 11, color: C.bright, letterSpacing: "0.28em" }}
+          >
+            M-864D
+          </span>
+          {demoMode && !wsState.connected && (
+            <span
+              className="font-mono uppercase rounded px-2 py-0.5"
+              style={{
+                fontSize: 8,
+                letterSpacing: "0.14em",
+                background: "#1c1000",
+                color: "#996600",
+                border: "1px solid #553300",
+              }}
+            >
+              PREVIEW
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {demoMode && !wsState.connected && (
+            <button
+              onClick={() => setDemoMode(false)}
+              className="flex items-center gap-1 font-mono uppercase rounded-xl px-3 py-1.5"
+              style={{
+                fontSize: 8,
+                letterSpacing: "0.1em",
+                background: C.raised,
+                border: `1px solid ${C.border}`,
+                color: C.dim,
+              }}
+            >
+              <X size={9} /> Exit
+            </button>
+          )}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="flex items-center justify-center rounded-xl transition-all"
+            style={{
+              width: 34,
+              height: 34,
+              background: showSettings ? `${C.accent}1e` : C.raised,
+              border: `1px solid ${showSettings ? C.accent + "55" : C.border}`,
+            }}
+            data-testid="btn-settings"
+          >
+            <Settings size={14} color={showSettings ? C.accent : C.dim} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Settings ── */}
+      {showSettings && (
+        <div className="flex-1 overflow-hidden">
+          <SettingsPanel wsState={wsState} onClose={() => setShowSettings(false)} />
+        </div>
+      )}
+
+      {/* ── Connect screen ── */}
+      {!isActive && !showSettings && (
+        <div className="flex-1 overflow-hidden">
+          <ConnectForm onDemo={() => setDemoMode(true)} />
+        </div>
+      )}
+
+      {/* ── Main mixer UI ── */}
+      {isActive && !showSettings && (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Tab bar */}
+          <div
+            className="flex shrink-0 px-3 gap-1 pt-1.5"
+            style={{ background: C.panel, borderBottom: `1px solid ${C.border}` }}
+          >
+            {TABS.map((t) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className="px-5 py-2 rounded-t-lg text-sm font-medium capitalize transition-all"
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className="font-mono uppercase tracking-widest rounded-t-xl px-6 py-2 transition-all"
                 style={{
-                  background:
-                    tab === t ? "hsl(220 15% 14%)" : "transparent",
-                  color: tab === t ? "#e2e8f0" : "#6b7280",
-                  borderBottom:
-                    tab === t
-                      ? "2px solid hsl(30 100% 52%)"
-                      : "2px solid transparent",
+                  fontSize: 9,
+                  letterSpacing: "0.22em",
+                  color: tab === t.id ? C.accent : C.dim,
+                  background: tab === t.id ? C.bg : "transparent",
+                  borderTop: `1px solid ${tab === t.id ? C.border : "transparent"}`,
+                  borderLeft: `1px solid ${tab === t.id ? C.border : "transparent"}`,
+                  borderRight: `1px solid ${tab === t.id ? C.border : "transparent"}`,
+                  borderBottom: tab === t.id ? `1px solid ${C.bg}` : "1px solid transparent",
+                  marginBottom: -1,
                 }}
-                data-testid={`tab-${t}`}
+                data-testid={`tab-${t.id}`}
               >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {t.label}
               </button>
             ))}
           </div>
 
-          <div
-            className="flex-1 overflow-auto p-4"
-            style={{ background: "hsl(220 15% 10%)" }}
-          >
-            {tab === "channels" && (
-              <div className="flex flex-col gap-6">
-                <section>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                    <span
-                      className="text-[10px] uppercase tracking-widest font-semibold px-2"
-                      style={{ color: MONO_IN_COLOR }}
-                    >
-                      Mono Inputs 1–8
-                    </span>
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
+          {/* ── Channels ── */}
+          {tab === "channels" && (
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {/* Section header strip */}
+              <div
+                className="flex shrink-0"
+                style={{ height: 20, background: "#060d1a", borderBottom: `1px solid ${C.border}` }}
+              >
+                {SECTIONS.map(({ label, count, color }) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-center font-mono uppercase"
+                    style={{
+                      width: 70 * count,
+                      fontSize: 7,
+                      letterSpacing: "0.22em",
+                      color,
+                      borderRight: `1px solid ${C.border}`,
+                      height: "100%",
+                    }}
+                  >
+                    {label}
                   </div>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {Array.from({ length: 8 }, (_, i) => (
-                      <ChannelStrip
-                        key={i}
-                        label={`IN ${i + 1}`}
-                        position={state.monoInFader[i] ?? 0x35}
-                        on={state.monoInOn[i] ?? true}
-                        level={state.monoInLevel[i] ?? 0}
-                        onFaderChange={(pos) => setFader(0, i, pos)}
-                        onToggle={() =>
-                          toggleOnOff(0, i, state.monoInOn[i] ?? true)
-                        }
-                        color={MONO_IN_COLOR}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                    <span
-                      className="text-[10px] uppercase tracking-widest font-semibold px-2"
-                      style={{ color: STEREO_IN_COLOR }}
-                    >
-                      Stereo Inputs 1–2
-                    </span>
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {Array.from({ length: 2 }, (_, i) => (
-                      <ChannelStrip
-                        key={i}
-                        label={`ST ${i + 1}`}
-                        position={state.stereoInFader[i] ?? 0x35}
-                        on={state.stereoInOn[i] ?? true}
-                        level={Math.max(
-                          state.stereoInLevel[i * 2] ?? 0,
-                          state.stereoInLevel[i * 2 + 1] ?? 0
-                        )}
-                        onFaderChange={(pos) => setFader(1, i, pos)}
-                        onToggle={() =>
-                          toggleOnOff(1, i, state.stereoInOn[i] ?? true)
-                        }
-                        color={STEREO_IN_COLOR}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                    <span
-                      className="text-[10px] uppercase tracking-widest font-semibold px-2"
-                      style={{ color: MONO_OUT_COLOR }}
-                    >
-                      Mono Outputs 1–4
-                    </span>
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {Array.from({ length: 4 }, (_, i) => (
-                      <ChannelStrip
-                        key={i}
-                        label={`OUT ${i + 1}`}
-                        position={state.monoOutFader[i] ?? 0x35}
-                        on={state.monoOutOn[i] ?? true}
-                        level={state.monoOutLevel[i] ?? 0}
-                        onFaderChange={(pos) => setFader(2, i, pos)}
-                        onToggle={() =>
-                          toggleOnOff(2, i, state.monoOutOn[i] ?? true)
-                        }
-                        color={MONO_OUT_COLOR}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                    <span
-                      className="text-[10px] uppercase tracking-widest font-semibold px-2"
-                      style={{ color: REC_OUT_COLOR }}
-                    >
-                      Rec Out L/R
-                    </span>
-                    <div
-                      className="h-px flex-1"
-                      style={{ background: "hsl(220 15% 22%)" }}
-                    />
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {[
-                      { label: "REC L", i: 0 },
-                      { label: "REC R", i: 1 },
-                    ].map(({ label, i }) => (
-                      <ChannelStrip
-                        key={i}
-                        label={label}
-                        position={state.recOutFader[i] ?? 0x35}
-                        on={state.recOutOn[i] ?? true}
-                        level={0}
-                        onFaderChange={(pos) => setFader(3, i, pos)}
-                        onToggle={() =>
-                          toggleOnOff(3, i, state.recOutOn[i] ?? true)
-                        }
-                        color={REC_OUT_COLOR}
-                      />
-                    ))}
-                  </div>
-                </section>
+                ))}
               </div>
-            )}
 
-            {tab === "matrix" && (
+              {/* Channel strips */}
+              <div
+                className="flex overflow-x-auto overflow-y-hidden flex-1"
+                style={{ scrollbarWidth: "thin", scrollbarColor: `${C.border} transparent` }}
+              >
+                {CH_DEFS.map((ch) => (
+                  <ChannelStrip
+                    key={ch.label}
+                    label={ch.label}
+                    color={ch.color}
+                    position={ch.getPos(mixState)}
+                    on={ch.getOn(mixState)}
+                    level={ch.getLvl(mixState)}
+                    onFader={(v) => setFader(ch.attr, ch.ch, v)}
+                    onToggle={() => toggleOn(ch.attr, ch.ch, ch.getOn(mixState))}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Matrix ── */}
+          {tab === "matrix" && (
+            <div className="flex-1 overflow-hidden">
               <MatrixGrid
-                state={state}
-                onToggle={toggleInputMatrix}
-                onGainChange={setInputGain}
+                mixState={mixState}
+                onToggleInput={toggleInputMatrix}
+                onToggleOutput={toggleOutputMatrix}
+                onSetGain={setInputGain}
               />
-            )}
+            </div>
+          )}
 
-            {tab === "presets" && (
-              <PresetsPanel currentPreset={state.currentPreset} />
-            )}
-          </div>
+          {/* ── Presets ── */}
+          {tab === "presets" && (
+            <div className="flex-1 overflow-hidden">
+              <PresetsPanel
+                currentPreset={mixState.currentPreset}
+                onLoad={loadPreset}
+                onStore={storePreset}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

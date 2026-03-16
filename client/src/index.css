@@ -193,50 +193,102 @@
   }
 }
 
-/* Mixer fader styling */
+/* ── DSP Hardware Theme ─────────────────────────────── */
+
+.dsp-screen {
+  background-color: #05080f;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(0, 160, 220, 0.022) 3px,
+      rgba(0, 160, 220, 0.022) 4px
+    );
+}
+
+/* Fader */
 .mixer-fader {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
   cursor: pointer;
   position: absolute;
-  width: 160px;
-  height: 40px;
+  width: 168px;
+  height: 44px;
   left: 50%;
   top: 50%;
   transform: translateX(-50%) translateY(-50%) rotate(-90deg);
   touch-action: none;
 }
+
 .mixer-fader::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, hsl(220 15% 18%), hsl(220 15% 22%));
+  height: 4px;
+  background: linear-gradient(to right,
+    #030608 0%,
+    #0a1420 40%,
+    #0d1c2e 60%,
+    #030608 100%
+  );
   border-radius: 2px;
-  height: 6px;
-  border: 1px solid hsl(220 15% 28%);
+  border-top: 1px solid #000;
+  border-bottom: 1px solid #102030;
+  box-shadow: inset 0 2px 4px #000, 0 1px 0 rgba(0,180,255,0.08);
 }
+
 .mixer-fader::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 36px;
-  height: 14px;
-  background: linear-gradient(to bottom, hsl(0 0% 85%), hsl(0 0% 60%));
-  border-radius: 2px;
-  border: 1px solid hsl(0 0% 35%);
-  margin-top: -4px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  width: 46px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 3px;
+  background: linear-gradient(180deg,
+    #d0d8e8 0%,
+    #b0bac8 18%,
+    #8892a2 45%,
+    #6c7688 55%,
+    #8892a2 72%,
+    #c0c8d8 100%
+  );
+  border: 1px solid #3a4458;
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.9),
+    inset 0 1px 1px rgba(255,255,255,0.25),
+    inset 0 -1px 1px rgba(0,0,0,0.4);
+  cursor: grab;
 }
+
 .mixer-fader::-moz-range-track {
-  background: linear-gradient(to right, hsl(220 15% 18%), hsl(220 15% 22%));
+  height: 4px;
+  background: linear-gradient(to right, #030608 0%, #0a1420 40%, #0d1c2e 60%, #030608 100%);
   border-radius: 2px;
-  height: 6px;
-  border: 1px solid hsl(220 15% 28%);
+  border-top: 1px solid #000;
+  border-bottom: 1px solid #102030;
 }
+
 .mixer-fader::-moz-range-thumb {
-  width: 36px;
-  height: 14px;
-  background: linear-gradient(to bottom, hsl(0 0% 85%), hsl(0 0% 60%));
-  border-radius: 2px;
-  border: 1px solid hsl(0 0% 35%);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  width: 46px;
+  height: 16px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #d0d8e8 0%, #b0bac8 18%, #8892a2 45%, #6c7688 55%, #8892a2 72%, #c0c8d8 100%);
+  border: 1px solid #3a4458;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.9), inset 0 1px 1px rgba(255,255,255,0.25);
+}
+
+/* DSP Matrix cell glow */
+.matrix-cell-on {
+  box-shadow: 0 0 8px 1px currentColor, inset 0 0 8px rgba(0,0,0,0.4);
+}
+
+/* LED pulse animation */
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.led-on {
+  animation: led-pulse 2.4s ease-in-out infinite;
 }
 
 @layer utilities {
