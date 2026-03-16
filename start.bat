@@ -30,8 +30,9 @@ if not exist node_modules (
     echo.
 )
 
-if not exist dist\public\index.html (
+if not exist dist\.m864d-build (
     echo Building app for the first time... this takes about 30 seconds.
+    echo (If you had an older version installed, this will replace it.)
     echo.
     call npx tsx script/build.ts
     if %errorlevel% neq 0 (
@@ -48,14 +49,14 @@ if not exist dist\public\index.html (
 
 echo Starting server...
 echo.
-echo The browser will open automatically in a few seconds.
-echo The connect page shows a QR code for other devices.
+echo The mixer control panel will open automatically in a few seconds.
+echo Tablets and phones on the same network can connect at the address shown.
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
 echo.
 
-start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000/connect"
+start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000"
 
 node dist\index.cjs
 

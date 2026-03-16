@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, writeFile } from "fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -59,6 +59,11 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Write a project-specific marker so start.bat can detect a stale dist
+  // from an older or unrelated project and trigger a clean rebuild.
+  await writeFile("dist/.m864d-build", new Date().toISOString());
+  console.log("done — dist/.m864d-build written");
 }
 
 buildAll().catch((err) => {
