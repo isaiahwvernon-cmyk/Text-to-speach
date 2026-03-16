@@ -347,7 +347,7 @@ const GAIN_OPTS = [
 function MatrixGrid({ mixState, onToggleInput, onToggleOutput, onSetGain }: MatrixGridProps) {
   const [gainEdit, setGainEdit] = useState<{ srcAttr: number; srcCh: number; matIdx: number; bus: number } | null>(null);
 
-  const BUS_LABELS = ["BUS 1", "BUS 2", "BUS 3", "BUS 4"];
+  const BUS_LABELS = ["OUT 1", "OUT 2", "OUT 3", "OUT 4"];
   const OUT_LABELS  = ["OUT 1", "OUT 2", "OUT 3", "OUT 4"];
   const REC_LABELS  = ["REC L", "REC R"];
 
@@ -1223,40 +1223,40 @@ export default function Home() {
               PREVIEW
             </span>
           )}
-          {wsState.connected && wsState.remoteMode !== null && (
+          {wsState.connected && (
             <span
               className="font-mono uppercase rounded px-2 py-0.5"
               style={{
                 fontSize: 8,
                 letterSpacing: "0.14em",
-                background: wsState.remoteMode ? "rgba(0,180,224,0.12)" : "rgba(229,160,0,0.12)",
-                color: wsState.remoteMode ? C.accent : C.store,
-                border: `1px solid ${wsState.remoteMode ? C.accent + "44" : C.store + "44"}`,
+                background: wsState.remoteMode === false ? "rgba(229,160,0,0.12)" : "rgba(0,180,224,0.12)",
+                color: wsState.remoteMode === false ? C.store : C.accent,
+                border: `1px solid ${wsState.remoteMode === false ? C.store + "44" : C.accent + "44"}`,
               }}
               data-testid="status-remote-mode"
             >
-              {wsState.remoteMode ? "REMOTE" : "LOCAL"}
+              {wsState.remoteMode === false ? "LOCAL" : "REMOTE"}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          {wsState.connected && wsState.remoteMode !== null && (
+          {wsState.connected && (
             <button
               onClick={toggleRemote}
               className="flex items-center gap-1.5 font-mono uppercase rounded-xl px-3 py-1.5"
               style={{
                 fontSize: 8,
                 letterSpacing: "0.1em",
-                background: wsState.remoteMode ? `${C.accent}14` : `${C.store}14`,
-                border: `1px solid ${wsState.remoteMode ? C.accent + "33" : C.store + "33"}`,
-                color: wsState.remoteMode ? C.accent : C.store,
+                background: wsState.remoteMode === false ? `${C.store}14` : `${C.accent}14`,
+                border: `1px solid ${wsState.remoteMode === false ? C.store + "33" : C.accent + "33"}`,
+                color: wsState.remoteMode === false ? C.store : C.accent,
               }}
               data-testid="btn-toggle-remote"
             >
-              {wsState.remoteMode
-                ? <><Radio size={9} /> Remote</>
-                : <><Eye size={9} /> Local</>}
+              {wsState.remoteMode === false
+                ? <><Eye size={9} /> Local</>
+                : <><Radio size={9} /> Remote</>}
             </button>
           )}
           {demoMode && !wsState.connected && (
