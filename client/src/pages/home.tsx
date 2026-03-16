@@ -10,6 +10,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Settings, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { QRCodeSVG } from "qrcode.react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Tab = "channels" | "matrix" | "presets";
@@ -801,7 +802,18 @@ function ConnectForm({ onDemo }: { onDemo: () => void }) {
 function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: MixerState }) {
   const [ip, setIp] = useState(wsState.ip || "");
   const [port, setPort] = useState(String(wsState.port || 3000));
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetch("/api/info")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.url && d.url !== "http://localhost:5000") setServerUrl(d.url);
+        else setServerUrl(`http://${location.hostname}:${location.port || 5000}`);
+      })
+      .catch(() => setServerUrl(null));
+  }, []);
 
   async function handleConnect() {
     try {
@@ -848,6 +860,46 @@ function SettingsPanel({ onClose, wsState }: { onClose: () => void; wsState: Mix
         </span>
         <button onClick={onClose}><X size={17} color={C.dim} /></button>
       </div>
+
+      {/* ── QR Code — scan to open mixer on any device on the same network ── */}
+      {serverUrl && (
+        <div
+          className="rounded-2xl p-4 flex flex-col items-center gap-3"
+          style={{ background: C.panel, border: `1px solid ${C.border}` }}
+        >
+          <span
+            className="font-mono uppercase tracking-widest self-start"
+            style={{ fontSize: 8, color: C.dim, letterSpacing: "0.18em" }}
+          >
+            Open on tablet / phone
+          </span>
+          <div
+            className="rounded-xl p-2"
+            style={{ background: "#ffffff" }}
+          >
+            <QRCodeSVG
+              value={serverUrl}
+              size={160}
+              bgColor="#ffffff"
+              fgColor="#0b1120"
+              level="M"
+            />
+          </div>
+          <span
+            className="font-mono text-center select-all"
+            style={{ fontSize: 11, color: C.accent, letterSpacing: "0.04em" }}
+            data-testid="text-server-url"
+          >
+            {serverUrl}
+          </span>
+          <span
+            className="font-mono text-center"
+            style={{ fontSize: 8, color: C.dim, letterSpacing: "0.08em" }}
+          >
+            Scan or type this address on any device on the same Wi-Fi network.
+          </span>
+        </div>
+      )}
 
       {/* Status indicator */}
       <div
