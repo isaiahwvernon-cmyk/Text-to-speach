@@ -68,7 +68,6 @@ export class MixerManager extends EventEmitter {
       this._startKeepalive();
       setTimeout(() => {
         this._requestAllState();
-        this._requestRemoteMode();
       }, 500);
     });
 
@@ -153,22 +152,14 @@ export class MixerManager extends EventEmitter {
     this._rawSend(Buffer.from(bytes));
   }
 
-  // ── Remote / Local mode ────────────────────────────────────────────────────
-  // M-864D uses 0xF0 sub-code 0x61 for remote/local mode
-  // Query:      [0xF0, 0x02, 0x61, 0x00]
-  // Set Remote: [0xF0, 0x03, 0x61, 0x00, 0x01]
-  // Set Local:  [0xF0, 0x03, 0x61, 0x00, 0x00]
-  // Response comes back as packet with cmd 0xE1
-
-  private _requestRemoteMode(): void {
-    this.sendCommand([0xF0, 0x02, 0x61, 0x00]);
-  }
+  // ── Control lock ───────────────────────────────────────────────────────────
+  // The M-864D's Remote/Local mode is toggled by a physical button on the unit
+  // and cannot be changed via TCP/IP commands. We track a software-side lock
+  // here instead: when locked (remoteMode=false), the server ignores control
+  // commands and the UI enters view-only mode.
 
   setRemoteMode(remote: boolean): void {
-    console.log(`[Mixer] Setting mode to ${remote ? "REMOTE" : "LOCAL"}`);
-    this.sendCommand([0xF0, 0x03, 0x61, 0x00, remote ? 0x01 : 0x00]);
-    // Update state immediately so the UI reflects the change without waiting
-    // for the mixer to acknowledge (not all firmware versions send a response)
+    console.log(`[Mixer] Control lock: ${remote ? "UNLOCKED (remote)" : "LOCKED (local/view-only)"}`);
     this.state.remoteMode = remote;
     this.emit("state", this.state);
   }
@@ -279,23 +270,7 @@ export class MixerManager extends EventEmitter {
       return;
     }
 
-    // Remote/local mode response: cmd=0xE1, data[0]=sub-code(0x61 or 0x00), data[1]=mode(0x00=local,0x01=remote)
-    if (cmd === 0xE1 && data.length >= 2) {
-      const mode = data[1] === 0x01;
-      console.log(`[Mixer] Remote mode response: ${mode ? "REMOTE" : "LOCAL"}`);
-      this.state.remoteMode = mode;
-      changed = true;
-    }
-
-    // Also handle direct 0x61 response if the mixer echoes it differently
-    else if (cmd === 0xA1 && data.length >= 2) {
-      const mode = data[1] === 0x01;
-      console.log(`[Mixer] Remote mode (0xA1): ${mode ? "REMOTE" : "LOCAL"}`);
-      this.state.remoteMode = mode;
-      changed = true;
-    }
-
-    else if (cmd === 0x91 && data.length >= 3) {
+    if (cmd === 0x91 && data.length >= 3) {
       const attr = data[0];
       const ch = data[1];
       const pos = data[2];

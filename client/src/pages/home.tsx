@@ -1014,7 +1014,7 @@ export default function Home() {
     try {
       await apiRequest("POST", "/api/remote", { remote: wsState.remoteMode !== true });
     } catch {
-      toast({ title: "Remote mode command failed", variant: "destructive" });
+      toast({ title: "Failed to toggle control lock", variant: "destructive" });
     }
   }
 
@@ -1235,7 +1235,7 @@ export default function Home() {
               }}
               data-testid="status-remote-mode"
             >
-              {wsState.remoteMode === false ? "LOCAL" : "REMOTE"}
+              {wsState.remoteMode === false ? "VIEW ONLY" : "CONTROL"}
             </span>
           )}
         </div>
@@ -1252,11 +1252,14 @@ export default function Home() {
                 border: `1px solid ${wsState.remoteMode === false ? C.store + "33" : C.accent + "33"}`,
                 color: wsState.remoteMode === false ? C.store : C.accent,
               }}
+              title={wsState.remoteMode === false
+                ? "Click to enable control — currently view only"
+                : "Click to lock controls — currently sending commands"}
               data-testid="btn-toggle-remote"
             >
               {wsState.remoteMode === false
-                ? <><Eye size={9} /> Local</>
-                : <><Radio size={9} /> Remote</>}
+                ? <><Eye size={9} /> View Only</>
+                : <><Radio size={9} /> Control</>}
             </button>
           )}
           {demoMode && !wsState.connected && (
@@ -1322,7 +1325,7 @@ export default function Home() {
               data-testid="banner-view-only"
             >
               <Eye size={10} />
-              View only — mixer is in local control mode
+              Controls locked — tap the Control button in the header to re-enable
             </div>
           )}
           {/* Tab bar */}
