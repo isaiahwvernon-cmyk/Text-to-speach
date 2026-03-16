@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "WbdIec4ZiPGJE9kfYH4tp"
+uri = "file://DEVELOPER_NOTES.txt"
+type = "text"
+title = "Developer Documentation"
+
+[[outputs]]
+id = "WeuZaqA4ui2H9VBSa-DcM"
+uri = "file://USER_GUIDE.txt"
+type = "text"
+title = "User Setup & Operation Guide"
