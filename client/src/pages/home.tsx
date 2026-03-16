@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useMixerWs } from "@/hooks/use-mixer";
 import {
   defaultMixerState,
@@ -8,8 +8,9 @@ import {
   formatDb,
 } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, X, Radio, Eye } from "lucide-react";
+import { Settings, X, Radio, Eye, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -92,7 +93,6 @@ const SCALE_MARKS = [
 // Fixed heights inside each strip
 const LABEL_H  = 22;
 const DB_H     = 20;
-const METER_H  = 14;
 const BTN_H    = 52;
 // Padding at top/bottom of the track so the thumb is never clipped at either extreme
 const FADER_PAD = 14;
@@ -177,38 +177,8 @@ interface StripProps {
 function ChannelStrip({ label, color, position, on, level, faderH, onFader, onToggle }: StripProps) {
   const db = faderPositionToDb(position);
   const dbStr = formatDb(db);
-  const meterPct = Math.min(100, (level / 72) * 100);
   const pct0db = (1 - 53 / 63) * 100;
-  const stripH = LABEL_H + faderH + DB_H + METER_H + BTN_H;
-
-  // Peak hold: jump to new peak, decay after 1.5 s
-  const [peakPct, setPeakPct] = useState(0);
-  const peakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (meterPct > peakPct) {
-      setPeakPct(meterPct);
-      if (peakTimer.current) clearTimeout(peakTimer.current);
-      peakTimer.current = setTimeout(() => setPeakPct(0), 1500);
-    }
-  }, [meterPct, peakPct]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fake noise-floor animation: channel is on but mixer hasn't sent level data yet
-  const [fakePct, setFakePct] = useState(0);
-  const fakeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (on && level === 0) {
-      fakeTimer.current = setInterval(() => {
-        setFakePct(Math.random() * 14 + 2); // 2–16% → looks like ambient noise floor
-      }, 140);
-    } else {
-      if (fakeTimer.current) { clearInterval(fakeTimer.current); fakeTimer.current = null; }
-      setFakePct(0);
-    }
-    return () => { if (fakeTimer.current) clearInterval(fakeTimer.current); };
-  }, [on, level]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Final display percentage: real meter wins over fake
-  const displayPct = level > 0 ? meterPct : (on ? fakePct : 0);
+  const stripH = LABEL_H + faderH + DB_H + BTN_H;
 
   return (
     <div
@@ -302,63 +272,6 @@ function ChannelStrip({ label, color, position, on, level, faderH, onFader, onTo
           fontSize: 10, color: on ? C.bright : C.dim, letterSpacing: "0.04em" }}
       >
         {dbStr}
-      </div>
-
-      {/* ── Level Meter Bar ─────────────────────────────────── */}
-      <div
-        className="w-full px-1.5"
-        style={{ height: METER_H, flexShrink: 0, display: "flex", alignItems: "center" }}
-      >
-        {/* Outer track — always visible so user can see the meter area */}
-        <div
-          className="relative w-full overflow-hidden"
-          style={{
-            height: 8,
-            background: "#060c18",
-            borderRadius: 4,
-            border: `1px solid ${C.border}`,
-          }}
-        >
-          {/* Colour fill */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: `${displayPct}%`,
-              background:
-                displayPct > 88
-                  ? C.recOut
-                  : displayPct > 70
-                  ? `linear-gradient(to right, ${C.monoOut}, #e0c040)`
-                  : C.monoOut,
-              borderRadius: 4,
-              transition: "width 0.06s linear",
-              boxShadow: displayPct > 2 ? `0 0 6px ${displayPct > 88 ? C.recOut : C.monoOut}99` : "none",
-            }}
-          />
-          {/* Segment dividers for VU look */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: "repeating-linear-gradient(to right, transparent 0px, transparent 4px, #060c18 4px, #060c18 5px)",
-            }}
-          />
-          {/* Peak hold tick */}
-          {peakPct > 2 && (
-            <div
-              style={{
-                position: "absolute",
-                top: 0, bottom: 0,
-                left: `${peakPct}%`,
-                width: 2,
-                background: peakPct > 88 ? C.recOut : peakPct > 70 ? "#e0c040" : C.monoOut,
-                opacity: 0.95,
-                boxShadow: `0 0 4px ${peakPct > 88 ? C.recOut : C.monoOut}`,
-                transition: "left 0.15s ease-out",
-              }}
-            />
-          )}
-        </div>
       </div>
 
       {/* ON / MUTE button */}
@@ -1092,6 +1005,13 @@ export default function Home() {
     }
   }
 
+  // ── Sync ───────────────────────────────────────────────────────────────────
+  const syncMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/sync"),
+    onSuccess: () => toast({ title: "Synced", description: "Fader levels read from mixer" }),
+    onError: () => toast({ title: "Sync failed", description: "Not connected to mixer", variant: "destructive" }),
+  });
+
   // ── Fader ──────────────────────────────────────────────────────────────────
   const setFader = useCallback(
     async (attr: number, ch: number, position: number) => {
@@ -1315,6 +1235,28 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Sync button — reads all fader positions from mixer */}
+          {wsState.connected && !viewOnly && (
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="flex items-center gap-1.5 font-mono uppercase rounded-xl px-3 py-1.5"
+              style={{
+                fontSize: 8,
+                letterSpacing: "0.1em",
+                background: `${C.monoOut}12`,
+                border: `1px solid ${C.monoOut}33`,
+                color: C.monoOut,
+                opacity: syncMutation.isPending ? 0.5 : 1,
+                transition: "opacity 0.15s",
+              }}
+              title="Read all fader levels from mixer"
+              data-testid="btn-sync"
+            >
+              <RefreshCw size={9} style={{ animation: syncMutation.isPending ? "spin 0.8s linear infinite" : "none" }} />
+              Sync
+            </button>
+          )}
           {wsState.connected && (
             <button
               onClick={toggleRemote}

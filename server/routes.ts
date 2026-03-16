@@ -116,6 +116,14 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  app.post("/api/sync", (_req, res) => {
+    if (!mixer.isConnected()) {
+      return res.status(400).json({ error: "Not connected to mixer" });
+    }
+    mixer.requestSync();
+    res.json({ ok: true });
+  });
+
   app.post("/api/fader", (req, res) => {
     const schema = z.object({
       attr: z.number().int().min(0).max(3),

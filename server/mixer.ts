@@ -188,6 +188,12 @@ export class MixerManager extends EventEmitter {
   }
 
   // ── State polling ──────────────────────────────────────────────────────────
+  requestSync(): void {
+    if (!this.state.connected) return;
+    console.log("[Mixer] Manual sync requested");
+    this._requestAllState();
+  }
+
   private _requestAllState(): void {
     const cmds: number[][] = [];
 
