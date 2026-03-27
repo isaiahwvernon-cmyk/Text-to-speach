@@ -1,0 +1,58 @@
+==========================================
+  REPIT -- IP-A1 Control + TTS Paging
+==========================================
+
+Node.js version: v24.14.0
+
+Checking TTS engine (Kokoro)...
+
+Python found: Python 3.12.0
+[TTS] Kokoro TTS: already installed -- OK
+
+Building REPIT... this takes about 30 seconds.
+
+building client...
+vite v7.3.0 building client environment for production...
+transforming (4) src\App.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1671 modules transformed.
+../dist/public/index.html                   1.50 kB │ gzip:   0.64 kB
+../dist/public/assets/index-BwCXo2oy.css   82.62 kB │ gzip:  13.27 kB
+../dist/public/assets/index-DxYtRAoS.js   363.12 kB │ gzip: 111.95 kB
+✓ built in 4.51s
+building server...
+
+  dist\index.cjs  948.8kb
+
+Done in 133ms
+
+Build complete!
+
+==========================================
+  Default login credentials:
+    Admin:  admin  / admin
+    IT:     it     / it1234
+  (Change these after first login via Admin panel)
+==========================================
+
+Starting server...
+
+Open your browser to: http://localhost:5000
+
+Press Ctrl+C to stop the server.
+==========================================
+
+
+==========================================
+ IP-A1 Volume Controller
+==========================================
+
+Local:   http://localhost:5000
+Network: http://10.0.0.243:5000
+
+5:51:27 PM [express] GET /api/auth/me 304 in 95ms :: {"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}
+5:51:27 PM [express] GET /api/system/status 200 in 3ms :: {"server":"ok","tts":"checking","ttsMessage":"Checking TTS engine...","sip":"unconfigured","pg":"unconfigured"}
+5:51:27 PM [express] GET /api/rooms 304 in 6ms :: []
+5:51:33 PM [express] GET /api/settings 304 in 15ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:51:33 PM [express] GET /api/logs 304 in 4ms :: [{"id":"mn9fpf9r5c6ac4b7","timestamp":"2026-03-27T21:49:39.855Z","level":"info","message":"System settings updated","user":"it"},{"id":"mn9fp8ey920e3b0b","timestamp":"2026-03-27T21:49:30.971Z","level":"info","message":"User logged in: it","user":"it"},{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:51:33 PM [express] GET /api/system/status 200 in 1ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}

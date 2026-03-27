@@ -48,27 +48,51 @@ async function checkTtsEngine(): Promise<void> {
     return;
   }
 
+  // Use find_spec to check package presence WITHOUT importing (avoids loading
+  // PyTorch / Kokoro model which can be very slow or fail on some platforms).
+  const checkCmd = [
+    "-c",
+    "import importlib.util, sys; " +
+    "k=importlib.util.find_spec('kokoro'); " +
+    "s=importlib.util.find_spec('soundfile'); " +
+    "print('ok' if (k and s) else 'missing')",
+  ];
+
   return new Promise((resolve) => {
-    const proc = spawn(
-      resolvedPythonCmd!,
-      ["-c", "import kokoro; print('ok')"],
-      { timeout: 8000 }
-    );
+    const proc = spawn(resolvedPythonCmd!, checkCmd);
 
     let output = "";
+    let stderr = "";
     proc.stdout.on("data", (d: Buffer) => (output += d.toString()));
+    proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+
+    // Manual timeout — spawn() does not honour the timeout option
+    const timer = setTimeout(() => {
+      proc.kill();
+      ttsStatus = "unavailable";
+      ttsStatusMessage =
+        "TTS check timed out. Try: pip install kokoro soundfile";
+      resolve();
+    }, 10000);
+
     proc.on("close", (code: number) => {
-      if (code === 0 && output.includes("ok")) {
+      clearTimeout(timer);
+      if (code === 0 && output.trim().includes("ok")) {
         ttsStatus = "ok";
         ttsStatusMessage = "Kokoro TTS engine ready";
+        console.log(`[TTS] Kokoro ready (Python: ${resolvedPythonCmd})`);
       } else {
         ttsStatus = "unavailable";
         ttsStatusMessage =
           "Kokoro TTS not installed. Install with: pip install kokoro soundfile";
+        console.warn(
+          `[TTS] Kokoro check failed (exit ${code}). output="${output.trim()}" stderr="${stderr.trim()}"`
+        );
       }
       resolve();
     });
     proc.on("error", () => {
+      clearTimeout(timer);
       ttsStatus = "unavailable";
       ttsStatusMessage =
         "Kokoro TTS not installed. Install with: pip install kokoro soundfile";

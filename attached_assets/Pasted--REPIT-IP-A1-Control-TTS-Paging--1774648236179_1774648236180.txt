@@ -1,0 +1,96 @@
+==========================================
+  REPIT -- IP-A1 Control + TTS Paging
+==========================================
+
+Node.js version: v24.14.0
+
+Installing Node dependencies... this may take a minute.
+
+
+added 495 packages, and audited 496 packages in 19s
+
+75 packages are looking for funding
+  run `npm fund` for details
+
+7 vulnerabilities (1 low, 3 moderate, 3 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+Checking TTS engine (Kokoro)...
+
+Python found: Python 3.12.0
+[TTS] Kokoro TTS: already installed -- OK
+
+Building REPIT... this takes about 30 seconds.
+
+building client...
+vite v7.3.0 building client environment for production...
+transforming (1) src\main.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1671 modules transformed.
+../dist/public/index.html                   1.50 kB │ gzip:   0.64 kB
+../dist/public/assets/index-BwCXo2oy.css   82.62 kB │ gzip:  13.27 kB
+../dist/public/assets/index-DxYtRAoS.js   363.12 kB │ gzip: 111.95 kB
+✓ built in 5.49s
+building server...
+
+  dist\index.cjs  948.8kb
+
+Done in 295ms
+
+Build complete!
+
+==========================================
+  Default login credentials:
+    Admin:  admin  / admin
+    IT:     it     / it1234
+  (Change these after first login via Admin panel)
+==========================================
+
+Starting server...
+
+Open your browser to: http://localhost:5000
+
+Press Ctrl+C to stop the server.
+==========================================
+
+
+==========================================
+ IP-A1 Volume Controller
+==========================================
+
+Local:   http://localhost:5000
+Network: http://10.0.0.243:5000
+
+5:48:54 PM [express] GET /api/auth/me 304 in 121ms :: {"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}
+5:48:54 PM [express] GET /api/system/status 200 in 9ms :: {"server":"ok","tts":"checking","ttsMessage":"Checking TTS engine...","sip":"unconfigured","pg":"unconfigured"}
+5:48:55 PM [express] GET /api/rooms 304 in 31ms :: []
+5:49:00 PM [express] GET /api/settings 200 in 4ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:00 PM [express] GET /api/logs 200 in 35ms :: [{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:00 PM [express] GET /api/system/status 200 in 73ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:04 PM [express] GET /api/settings 304 in 5ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:04 PM [express] GET /api/logs 304 in 21ms :: [{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:04 PM [express] GET /api/system/status 304 in 44ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:05 PM [express] GET /api/settings 304 in 3ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:05 PM [express] GET /api/logs 304 in 3ms :: [{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:05 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:12 PM [express] GET /api/system/status 304 in 0ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:13 PM [express] GET /api/rooms 304 in 5ms :: []
+5:49:30 PM [express] POST /api/auth/login 200 in 786ms :: {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJtbjlhYWQwMjRjOGRhMmFiIiwidXNlcm5hbWUiOiJpdCIsInJvbGUiOiJpdCIsImlhdCI6MTc3NDY0ODE3MCwiZXhwIjoxNzc0NzM0NTcwfQ.1DrwGBUNt9Xrgng-xjCmpEjcuQ8GLOLPMNucg80ZNDU","user":{"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}}
+5:49:31 PM [express] GET /api/system/status 304 in 6ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:31 PM [express] GET /api/rooms 304 in 6ms :: []
+5:49:33 PM [express] GET /api/settings 304 in 13ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:33 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:33 PM [express] GET /api/logs 200 in 13ms :: [{"id":"mn9fp8ey920e3b0b","timestamp":"2026-03-27T21:49:30.971Z","level":"info","message":"User logged in: it","user":"it"},{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:39 PM [express] PUT /api/settings 200 in 81ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:41 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:41 PM [express] GET /api/rooms 304 in 9ms :: []
+5:49:53 PM [express] GET /api/settings 200 in 2ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:53 PM [express] GET /api/logs 200 in 3ms :: [{"id":"mn9fpf9r5c6ac4b7","timestamp":"2026-03-27T21:49:39.855Z","level":"info","message":"System settings updated","user":"it"},{"id":"mn9fp8ey920e3b0b","timestamp":"2026-03-27T21:49:30.971Z","level":"info","message":"User logged in: it","user":"it"},{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:53 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+5:49:54 PM [express] GET /api/settings 304 in 5ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+5:49:54 PM [express] GET /api/logs 304 in 2ms :: [{"id":"mn9fpf9r5c6ac4b7","timestamp":"2026-03-27T21:49:39.855Z","level":"info","message":"System settings updated","user":"it"},{"id":"mn9fp8ey920e3b0b","timestamp":"2026-03-27T21:49:30.971Z","level":"info","message":"User logged in: it","user":"it"},{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+5:49:54 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
