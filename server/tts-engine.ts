@@ -11,8 +11,10 @@ let ttsStatusMessage = "Checking TTS engine...";
 let resolvedPythonCmd: string | null = null;
 
 /**
- * Find the first Python executable that actually works on this platform.
- * On Windows: py > python; on Linux/Mac: python3 > python
+ * Find the absolute path to a working Python 3 executable.
+ * Returns the real filesystem path (e.g. C:\Python312\python.exe) so that
+ * subprocess spawns always resolve to the same interpreter regardless of
+ * PATH differences between environments.
  */
 function findPythonCmd(): string | null {
   const candidates =
@@ -22,14 +24,29 @@ function findPythonCmd(): string | null {
 
   for (const cmd of candidates) {
     try {
-      const result = spawnSync(cmd, ["--version"], { timeout: 4000 });
-      if (result.status === 0) {
-        const ver =
-          (result.stdout?.toString() ?? "") + (result.stderr?.toString() ?? "");
-        if (ver.includes("Python 3")) {
-          return cmd;
+      // First verify this command runs Python 3
+      const verResult = spawnSync(cmd, ["--version"], { timeout: 4000 });
+      if (verResult.status !== 0) continue;
+      const ver =
+        (verResult.stdout?.toString() ?? "") +
+        (verResult.stderr?.toString() ?? "");
+      if (!ver.includes("Python 3")) continue;
+
+      // Resolve the absolute path of this interpreter via sys.executable
+      const pathResult = spawnSync(
+        cmd,
+        ["-c", "import sys; print(sys.executable)"],
+        { timeout: 4000 }
+      );
+      if (pathResult.status === 0) {
+        const absPath = pathResult.stdout?.toString().trim();
+        if (absPath && absPath.length > 0) {
+          return absPath; // e.g. C:\Python312\python.exe
         }
       }
+
+      // Fallback: return the command name if we can't get the abs path
+      return cmd;
     } catch {
       // not found, try next
     }
@@ -40,6 +57,10 @@ function findPythonCmd(): string | null {
 // Check if Python + kokoro are available
 async function checkTtsEngine(): Promise<void> {
   resolvedPythonCmd = findPythonCmd();
+
+  if (resolvedPythonCmd) {
+    console.log(`[TTS] Python resolved to: ${resolvedPythonCmd}`);
+  }
 
   if (!resolvedPythonCmd) {
     ttsStatus = "unavailable";
