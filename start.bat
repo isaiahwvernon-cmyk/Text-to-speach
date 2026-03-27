@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   IP-A1 Volume Controller
+echo   REPIT — IP-A1 Control + TTS Paging
 echo ==========================================
 echo.
 
@@ -30,32 +30,39 @@ if not exist node_modules (
     echo.
 )
 
-if not exist dist\public\index.html (
-    echo Building app for the first time... this takes about 30 seconds.
+echo Building REPIT... this takes about 30 seconds.
+echo.
+
+if exist dist rmdir /s /q dist
+
+call npx tsx script/build.ts
+if %errorlevel% neq 0 (
     echo.
-    call npx tsx script/build.ts
-    if %errorlevel% neq 0 (
-        echo.
-        echo ERROR: Build failed. See above for details.
-        echo Try deleting the "dist" folder and running again.
-        pause
-        exit /b 1
-    )
-    echo.
-    echo Build complete!
-    echo.
+    echo ERROR: Build failed. See above for details.
+    pause
+    exit /b 1
 )
 
+echo.
+echo Build complete!
+echo.
+echo ==========================================
+echo   Default login credentials:
+echo     Admin:  admin  / admin
+echo     IT:     it     / it1234
+echo   (Change these after first login)
+echo ==========================================
+echo.
 echo Starting server...
 echo.
-echo The browser will open automatically in a few seconds.
-echo The connect page shows a QR code for other devices.
+echo Open your browser to: http://localhost:5000
+echo The Connect page shows a QR code for other devices on your network.
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
 echo.
 
-start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000/connect"
+start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000"
 
 node dist\index.cjs
 

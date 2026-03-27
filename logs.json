@@ -1,5 +1,12 @@
 [
   {
+    "id": "mn9ba0ndf3679ece",
+    "timestamp": "2026-03-27T19:45:42.601Z",
+    "level": "info",
+    "message": "User logged in: admin",
+    "user": "admin"
+  },
+  {
     "id": "mn9ad74naba59a22",
     "timestamp": "2026-03-27T19:20:11.351Z",
     "level": "info",
