@@ -1,0 +1,108 @@
+PROJECT: REPIT – IP-A1 Control + TTS Paging System
+
+Overview
+Build a standalone web-based control application that allows users to:
+- Control volume of TOA IP-A1 speakers
+- Send live Text-to-Speech (TTS) announcements
+- Route audio either Direct (peer-to-peer SIP) or via IP-A1PG (SIP → DTMF → Multicast zones)
+
+CORE FEATURES
+
+1. Volume Control
+- Per speaker or zone control
+- Permission-based visibility
+
+2. Text-to-Speech Paging
+- Uses Kokoro TTS (server-side)
+- Supports G.711 μ-law (PCMU), G.711 A-law (PCMA), G.722
+
+3. Routing Modes
+
+A) Direct Mode
+User → Server → TTS → Transcode → SIP → RTP → Speaker
+
+B) PG Mode
+User → Server → TTS → Transcode → SIP to PG → DTMF → Delay → (Optional Chime) → Delay → RTP → PG → Multicast → Speakers
+
+DELAY LOGIC
+- DTMF Delay: 500–750 ms (adjustable)
+- Chime Delay: 500–1000 ms (adjustable)
+
+USER ROLES
+
+Normal User
+- Simple UI
+- Control assigned speakers/zones
+- Send TTS
+- Use 5 presets
+
+Admin
+- Manage users
+- Assign permissions
+- Enable/disable TTS
+
+IT
+- SIP settings
+- PG config
+- Codec selection
+- Delay tuning
+- Logging
+
+PERMISSIONS
+- Each user only sees and controls assigned speakers/zones
+- Server validates all actions
+
+TTS PRESETS
+- Max 5 per user
+- Save / Edit / Delete / Send
+- Stored server-side
+
+AUTHENTICATION
+- Login required for TTS
+- Roles: user / admin / IT
+
+SYSTEM ARCHITECTURE
+
+Frontend
+- Clean UI
+- Role-based views
+
+Backend (Node.js)
+- Auth
+- TTS (Kokoro)
+- SIP/RTP
+- Logging
+
+PRE-FLIGHT CHECK
+- Node installed
+- Dependencies installed
+- Kokoro model present
+- Ports available
+
+AUTO FIX
+- npm install if needed
+- Download model if missing
+- Create config
+
+LAUNCH
+Start_REPIT.bat
+
+SYSTEM STATUS PANEL
+- Server
+- TTS
+- SIP
+- PG
+
+DATABASE
+- users
+- roles
+- permissions
+- speakers/zones
+- presets
+- settings
+- logs
+
+CORE PRINCIPLE
+Normal users send announcements
+Admin controls access
+IT controls system behavior
