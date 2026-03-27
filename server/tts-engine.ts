@@ -1,22 +1,4 @@
-/**
- * TTS Engine Module
- *
- * This module handles Text-to-Speech generation using Kokoro TTS.
- * Kokoro is an open-weight 82M parameter TTS model (Apache 2.0).
- *
- * In this environment, TTS audio is generated as a status simulation.
- * To enable real audio:
- *   1. Install Python + kokoro: pip install kokoro soundfile
- *   2. Run the included Python helper: python server/kokoro_tts.py
- *   3. Set TTS_BACKEND=python in environment
- *
- * The SIP/RTP audio transmission requires:
- *   - A working SIP server/network
- *   - TOA IP-A1 speakers on the same network segment
- *   - Proper SIP registration credentials (configured in IT Settings)
- */
-
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import path from "path";
 import fs from "fs";
 import { getSettings } from "./db.js";
@@ -26,13 +8,52 @@ export type TtsStatus = "ok" | "unavailable" | "checking";
 
 let ttsStatus: TtsStatus = "checking";
 let ttsStatusMessage = "Checking TTS engine...";
+let resolvedPythonCmd: string | null = null;
+
+/**
+ * Find the first Python executable that actually works on this platform.
+ * On Windows: py > python; on Linux/Mac: python3 > python
+ */
+function findPythonCmd(): string | null {
+  const candidates =
+    process.platform === "win32"
+      ? ["py", "python", "python3"]
+      : ["python3", "python"];
+
+  for (const cmd of candidates) {
+    try {
+      const result = spawnSync(cmd, ["--version"], { timeout: 4000 });
+      if (result.status === 0) {
+        const ver =
+          (result.stdout?.toString() ?? "") + (result.stderr?.toString() ?? "");
+        if (ver.includes("Python 3")) {
+          return cmd;
+        }
+      }
+    } catch {
+      // not found, try next
+    }
+  }
+  return null;
+}
 
 // Check if Python + kokoro are available
 async function checkTtsEngine(): Promise<void> {
+  resolvedPythonCmd = findPythonCmd();
+
+  if (!resolvedPythonCmd) {
+    ttsStatus = "unavailable";
+    ttsStatusMessage =
+      "Python 3 not found. Kokoro TTS requires Python 3.8+ with kokoro package installed.";
+    return;
+  }
+
   return new Promise((resolve) => {
-    const proc = spawn("python3", ["-c", "import kokoro; print('ok')"], {
-      timeout: 5000,
-    });
+    const proc = spawn(
+      resolvedPythonCmd!,
+      ["-c", "import kokoro; print('ok')"],
+      { timeout: 8000 }
+    );
 
     let output = "";
     proc.stdout.on("data", (d: Buffer) => (output += d.toString()));
@@ -50,7 +71,7 @@ async function checkTtsEngine(): Promise<void> {
     proc.on("error", () => {
       ttsStatus = "unavailable";
       ttsStatusMessage =
-        "Python not found. Kokoro TTS requires Python 3.8+ with kokoro package installed.";
+        "Kokoro TTS not installed. Install with: pip install kokoro soundfile";
       resolve();
     });
   });
@@ -73,7 +94,7 @@ async function generateSpeech(
   text: string,
   outputPath: string
 ): Promise<void> {
-  if (ttsStatus !== "ok") {
+  if (ttsStatus !== "ok" || !resolvedPythonCmd) {
     throw new Error(ttsStatusMessage);
   }
 
@@ -83,7 +104,7 @@ async function generateSpeech(
   const scriptPath = path.resolve(process.cwd(), "server/kokoro_tts.py");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [
+    const proc = spawn(resolvedPythonCmd!, [
       scriptPath,
       "--text", text,
       "--output", outputPath,
@@ -107,8 +128,6 @@ async function generateSpeech(
 /**
  * Send a TTS announcement via SIP to the target endpoint.
  *
- * This implements the full paging workflow:
- *
  * Direct mode:
  *   text → Kokoro → PCM → transcode to codec → SIP/RTP to target speaker
  *
@@ -127,7 +146,6 @@ export async function sendTtsAnnouncement(
   const chimeEnabled = payload.chimeEnabled ?? settings.tts.chimeEnabled;
   const chimeDelay = payload.chimeDelayMs ?? settings.tts.chimeDelayMs;
 
-  // Validate configuration
   if (payload.mode === "direct" && !payload.targetAddress) {
     throw new Error("Direct mode requires a target speaker address");
   }
@@ -135,7 +153,6 @@ export async function sendTtsAnnouncement(
     throw new Error("PG mode requires the PG server address");
   }
 
-  // Build a detailed workflow description for logging
   const workflowSteps: string[] = [];
   workflowSteps.push(`User: ${username}`);
   workflowSteps.push(`Text: "${payload.text}"`);
@@ -151,7 +168,6 @@ export async function sendTtsAnnouncement(
     }
   }
 
-  // If TTS engine is available, generate real audio
   if (ttsStatus === "ok") {
     const tmpDir = path.join(process.cwd(), "tmp");
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
@@ -161,13 +177,8 @@ export async function sendTtsAnnouncement(
     try {
       await generateSpeech(payload.text, wavPath);
       workflowSteps.push("TTS: Generated with Kokoro");
-
-      // TODO: Implement actual SIP call and RTP streaming
-      // This requires a running SIP server and network access.
-      // The audio file is at wavPath and ready for transmission.
       workflowSteps.push("SIP: [requires network SIP setup]");
 
-      // Cleanup temp file
       try { fs.unlinkSync(wavPath); } catch {}
 
       return {
@@ -179,8 +190,6 @@ export async function sendTtsAnnouncement(
     }
   }
 
-  // Simulated mode — returns success with workflow description
-  // This shows exactly what the system WOULD do when fully configured
   return {
     success: true,
     simulated: true,
