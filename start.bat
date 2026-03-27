@@ -32,28 +32,51 @@ if not exist node_modules (
     echo.
 )
 
-:: ── Check Python + install Kokoro TTS ────────────────────────────────────────
+:: ── Find a working Python installation ───────────────────────────────────────
 echo Checking TTS engine (Kokoro)...
 echo.
 
 set PYTHON_CMD=
-where python >nul 2>nul
-if %errorlevel% equ 0 set PYTHON_CMD=python
-where python3 >nul 2>nul
-if %errorlevel% equ 0 set PYTHON_CMD=python3
 
-if "%PYTHON_CMD%"=="" (
-    echo [TTS] WARNING: Python not found. Kokoro TTS will not be available.
-    echo [TTS] To enable real audio: install Python 3.8+ from https://python.org
-    echo [TTS] REPIT will still run in simulation mode without it.
-    echo.
-    goto :BUILD
+:: First try 'py' (the Python Launcher for Windows — most reliable)
+py --version >nul 2>nul
+if %errorlevel% equ 0 (
+    set PYTHON_CMD=py
+    goto :CHECK_KOKORO
 )
 
-for /f %%v in ('%PYTHON_CMD% --version') do set PYVER=%%v
+:: Try 'python' but confirm it is a real install, not the Windows Store stub
+:: The store stub prints nothing useful and exits non-zero
+for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PYCHECK=%%v
+echo %PYCHECK% | findstr /C:"Python 3" >nul 2>nul
+if %errorlevel% equ 0 (
+    set PYTHON_CMD=python
+    goto :CHECK_KOKORO
+)
+
+:: Try 'python3'
+for /f "tokens=*" %%v in ('python3 --version 2^>^&1') do set PYCHECK=%%v
+echo %PYCHECK% | findstr /C:"Python 3" >nul 2>nul
+if %errorlevel% equ 0 (
+    set PYTHON_CMD=python3
+    goto :CHECK_KOKORO
+)
+
+:: No working Python found
+echo [TTS] Python 3 not found. Kokoro TTS will not be available.
+echo [TTS] To enable real audio: install Python 3.8+ from https://python.org
+echo [TTS]   - During install, check "Add Python to PATH"
+echo [TTS]   - Or disable the Windows Store stub in:
+echo [TTS]     Settings ^> Apps ^> Advanced app settings ^> App execution aliases
+echo [TTS] REPIT will run in simulation mode without Python.
+echo.
+goto :BUILD
+
+:: ── Check / install Kokoro ────────────────────────────────────────────────────
+:CHECK_KOKORO
+for /f "tokens=*" %%v in ('%PYTHON_CMD% --version') do set PYVER=%%v
 echo Python found: %PYVER%
 
-:: Check if kokoro is already installed
 %PYTHON_CMD% -c "import kokoro" >nul 2>nul
 if %errorlevel% equ 0 (
     echo [TTS] Kokoro TTS: already installed -- OK
@@ -61,15 +84,14 @@ if %errorlevel% equ 0 (
     goto :BUILD
 )
 
-:: Install kokoro and soundfile
 echo [TTS] Installing Kokoro TTS and dependencies...
-echo [TTS] This may take several minutes on first run (downloading ~300MB model).
+echo [TTS] This may take several minutes on first run.
 echo.
 %PYTHON_CMD% -m pip install kokoro soundfile
 if %errorlevel% neq 0 (
     echo.
     echo [TTS] WARNING: Kokoro install failed. TTS will run in simulation mode.
-    echo [TTS] You can retry manually: pip install kokoro soundfile
+    echo [TTS] Retry manually: pip install kokoro soundfile
     echo.
 ) else (
     echo.

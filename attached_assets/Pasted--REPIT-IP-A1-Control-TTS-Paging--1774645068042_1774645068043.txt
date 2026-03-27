@@ -1,0 +1,80 @@
+==========================================
+  REPIT -- IP-A1 Control + TTS Paging
+==========================================
+
+Node.js version: v24.14.0
+
+Installing Node dependencies... this may take a minute.
+
+
+added 495 packages, and audited 496 packages in 13s
+
+75 packages are looking for funding
+  run `npm fund` for details
+
+7 vulnerabilities (1 low, 3 moderate, 3 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+Checking TTS engine (Kokoro)...
+
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+Python found:
+[TTS] Installing Kokoro TTS and dependencies...
+[TTS] This may take several minutes on first run (downloading ~300MB model).
+
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+[TTS] WARNING: Kokoro install failed. TTS will run in simulation mode.
+[TTS] You can retry manually: pip install kokoro soundfile
+
+Building REPIT... this takes about 30 seconds.
+
+building client...
+vite v7.3.0 building client environment for production...
+transforming (1) src\main.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1671 modules transformed.
+../dist/public/index.html                   1.50 kB │ gzip:   0.64 kB
+../dist/public/assets/index-BwCXo2oy.css   82.62 kB │ gzip:  13.27 kB
+../dist/public/assets/index-DxYtRAoS.js   363.12 kB │ gzip: 111.95 kB
+✓ built in 2.98s
+building server...
+
+  dist\index.cjs  948.4kb
+
+Done in 115ms
+
+Build complete!
+
+==========================================
+  Default login credentials:
+    Admin:  admin  / admin
+    IT:     it     / it1234
+  (Change these after first login via Admin panel)
+==========================================
+
+Starting server...
+
+Open your browser to: http://localhost:5000
+
+Press Ctrl+C to stop the server.
+==========================================
+
+
+==========================================
+ IP-A1 Volume Controller
+==========================================
+
+Local:   http://localhost:5000
+Network: http://172.16.1.80:5000
+
+4:56:03 PM [express] GET /api/auth/me 304 in 6ms :: {"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}
+4:56:03 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
+4:56:03 PM [express] GET /api/rooms 200 in 3ms :: []
+4:56:05 PM [express] GET /api/settings 200 in 2ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+4:56:05 PM [express] GET /api/logs 200 in 2ms :: [{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+4:56:05 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"unavailable","ttsMessage":"Kokoro TTS not installed. Install with: pip install kokoro soundfile","sip":"unconfigured","pg":"unconfigured"}
