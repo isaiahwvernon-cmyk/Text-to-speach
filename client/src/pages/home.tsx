@@ -1,83 +1,73 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import {
-  Volume2, VolumeX, Volume1, Minus, Plus,
-  Speaker, AlertCircle, ArrowLeft, Trash2, PlusCircle, Home as HomeIcon,
-  Pencil, X, Lock, Unlock, Search, RefreshCw, CloudOff, Link2, Unlink,
+  Volume2, VolumeX, Volume1, Minus, Plus, Speaker as SpeakerIcon,
+  AlertCircle, ArrowLeft, Trash2, PlusCircle, Pencil, X, Search, RefreshCw,
+  CloudOff, Mic, Send, Radio, Settings, Users, ChevronDown, ChevronUp,
+  Bookmark, LogOut, CheckCircle2, AlertTriangle, Wifi, WifiOff, Loader2,
+  Bell, BellOff, Zap, Globe, Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import type { Room, Speaker as SpeakerType, SpeakerStatus } from "@shared/schema";
+import { useAuth } from "@/context/AuthContext";
+import { apiFetch } from "@/lib/auth";
+import type { Room, Speaker as SpeakerType, SpeakerStatus, TtsPreset, Codec, TtsRoutingMode } from "@shared/schema";
 
-const ADMIN_PASSWORD = "IPA1";
-
-const VOLUME_PRESETS = [
-  { label: "Low", value: 15, icon: Volume1 },
-  { label: "Normal", value: 31, icon: Volume2 },
-  { label: "Loud", value: 48, icon: Speaker },
-];
+const INPUT_CLS = "w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-base";
+const SELECT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-function loadRoomsFromCache(): Room[] {
-  try {
-    const saved = localStorage.getItem("toa_rooms");
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
-    // Migrate old flat-format from localStorage cache
-    return parsed.map((r: any) => {
-      if (r.ipAddress && !r.speakers) {
-        return {
-          id: r.id,
-          name: r.name,
-          syncMode: true,
-          speakers: [{ id: generateId(), label: "Speaker 1", ipAddress: r.ipAddress, username: r.username, password: r.password }],
-        };
-      }
-      return r;
-    });
-  } catch { return []; }
-}
-
-function saveRoomsToCache(rooms: Room[]) {
-  localStorage.setItem("toa_rooms", JSON.stringify(rooms));
-}
-
-async function fetchRoomsFromServer(): Promise<Room[]> {
-  const res = await fetch("/api/rooms");
-  if (!res.ok) throw new Error("Failed to load config");
-  return res.json();
-}
-
-async function saveRoomsToServer(rooms: Room[]): Promise<void> {
-  const res = await fetch(`/api/rooms?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "x-admin-password": ADMIN_PASSWORD },
-    body: JSON.stringify(rooms),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${body || "no details"}`);
-  }
-}
-
-// ─── Input field styling ─────────────────────────────────────────────────────
-const INPUT_CLS = "w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]";
-
-// ─── Blank speaker factory ────────────────────────────────────────────────────
 function blankSpeaker(index: number): SpeakerType {
   return { id: generateId(), label: `Speaker ${index + 1}`, ipAddress: "", username: "", password: "" };
 }
 
+// ─── System Status Badge ──────────────────────────────────────────────────────
+function StatusDot({ status }: { status: string }) {
+  if (status === "ok") return <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />;
+  if (status === "checking") return <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block animate-pulse" />;
+  if (status === "unconfigured") return <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />;
+  return <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />;
+}
+
+function SystemStatusBar() {
+  const [status, setStatus] = useState<any>(null);
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await apiFetch("/api/system/status");
+        if (res.ok) setStatus(await res.json());
+      } catch {}
+    }
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, []);
+  if (!status) return null;
+  const items = [
+    { label: "Server", key: "server" },
+    { label: "TTS", key: "tts" },
+    { label: "SIP", key: "sip" },
+    { label: "PG", key: "pg" },
+  ];
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {items.map(({ label, key }) => (
+        <span key={key} className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <StatusDot status={status[key]} />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ─── AddRoomDialog ────────────────────────────────────────────────────────────
-function AddRoomDialog({
-  onAdd,
-  onCancel,
-  editRoom,
-}: {
+function AddRoomDialog({ onAdd, onCancel, editRoom }: {
   onAdd: (room: Room) => void;
   onCancel: () => void;
   editRoom?: Room | null;
@@ -91,1166 +81,871 @@ function AddRoomDialog({
     setSpeakers((prev) => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
   };
 
-  const addSpeaker = () => setSpeakers((prev) => [...prev, blankSpeaker(prev.length)]);
-
-  const removeSpeaker = (index: number) =>
-    setSpeakers((prev) => prev.filter((_, i) => i !== index));
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) return;
+    const validSpeakers = speakers.filter((s) => s.ipAddress.trim() && s.username.trim() && s.password.trim());
+    if (validSpeakers.length === 0) return;
     onAdd({
       id: editRoom?.id || generateId(),
       name: name.trim(),
-      speakers,
+      speakers: validSpeakers,
       syncMode: editRoom?.syncMode ?? true,
     });
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <Card
-        className="w-full sm:max-w-md border-0 shadow-2xl bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mt-3 sm:hidden" />
-        <CardContent className="p-6 pt-5 sm:pt-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2
-              className="text-xl font-bold text-slate-900 dark:text-white"
-              data-testid="text-dialog-title"
-            >
-              {editRoom ? "Edit Room" : "Add Room"}
-            </h2>
-            <button
-              onClick={onCancel}
-              className="p-2 rounded-xl text-[#707372] hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              data-testid="button-dialog-close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Room name */}
-            <div>
-              <label className="block text-sm font-medium text-[#707372] dark:text-slate-300 mb-2">
-                Room Name
-              </label>
-              <input
-                data-testid="input-room-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Room 101, Science Lab"
-                className={INPUT_CLS}
-                required
-                autoFocus
-              />
-            </div>
-
-            {/* Speakers */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-[#707372] dark:text-slate-300">
-                  Speakers
-                  {speakers.length > 1 && (
-                    <span className="ml-2 text-xs bg-[#FF8200]/10 text-[#FF8200] px-2 py-0.5 rounded-full font-semibold">
-                      {speakers.length}
-                    </span>
-                  )}
-                </label>
-                <button
-                  type="button"
-                  onClick={addSpeaker}
-                  className="flex items-center gap-1.5 text-sm text-[#FF8200] hover:text-[#e67400] font-medium transition-colors"
-                  data-testid="button-add-speaker"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  Add Speaker
-                </button>
-              </div>
-
-              {speakers.map((sp, idx) => (
-                <div
-                  key={sp.id}
-                  className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-3 bg-slate-50/50 dark:bg-slate-800/40"
-                  data-testid={`speaker-entry-${idx}`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-[#FF8200] flex items-center justify-center">
-                        <Speaker className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      <input
-                        type="text"
-                        value={sp.label}
-                        onChange={(e) => updateSpeaker(idx, "label", e.target.value)}
-                        placeholder={`Speaker ${idx + 1}`}
-                        className="text-sm font-semibold text-slate-800 dark:text-slate-200 bg-transparent border-none outline-none w-32 focus:ring-0"
-                        data-testid={`input-speaker-label-${idx}`}
-                      />
-                    </div>
-                    {speakers.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeSpeaker(idx)}
-                        className="p-1.5 rounded-lg text-[#707372] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                        data-testid={`button-remove-speaker-${idx}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
-                      IP Address
-                    </label>
-                    <input
-                      data-testid={`input-speaker-ip-${idx}`}
-                      type="text"
-                      value={sp.ipAddress}
-                      onChange={(e) => updateSpeaker(idx, "ipAddress", e.target.value)}
-                      placeholder="192.168.1.100"
-                      className={INPUT_CLS}
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
-                        Username
-                      </label>
-                      <input
-                        data-testid={`input-speaker-username-${idx}`}
-                        type="text"
-                        value={sp.username}
-                        onChange={(e) => updateSpeaker(idx, "username", e.target.value)}
-                        placeholder="admin"
-                        className={INPUT_CLS}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#707372] dark:text-slate-400 mb-1.5">
-                        Password
-                      </label>
-                      <input
-                        data-testid={`input-speaker-password-${idx}`}
-                        type="password"
-                        value={sp.password}
-                        onChange={(e) => updateSpeaker(idx, "password", e.target.value)}
-                        placeholder="••••••"
-                        className={INPUT_CLS}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3 pt-2 pb-2 safe-bottom">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCancel}
-                className="flex-1 h-14 rounded-xl font-medium text-base"
-                data-testid="button-dialog-cancel"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                data-testid="button-dialog-save"
-                className="flex-1 h-14 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base"
-              >
-                {editRoom ? "Save Changes" : "Add Room"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ─── AdminPasswordDialog ──────────────────────────────────────────────────────
-function AdminPasswordDialog({ onUnlock, onCancel }: { onUnlock: () => void; onCancel: () => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === ADMIN_PASSWORD) { onUnlock(); }
-    else { setError(true); setPassword(""); }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <Card
-        className="w-full sm:max-w-sm border-0 shadow-2xl bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mt-3 sm:hidden" />
-        <CardContent className="p-6 pt-5 sm:pt-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#FF8200] flex items-center justify-center text-white">
-                <Lock className="w-5 h-5" />
-              </div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white" data-testid="text-admin-dialog-title">
-                Admin Access
-              </h2>
-            </div>
-            <button
-              onClick={onCancel}
-              className="p-2 rounded-xl text-[#707372] hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              data-testid="button-admin-dialog-close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <p className="text-sm text-[#707372] dark:text-slate-400 mb-4">Enter the admin password to manage rooms</p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <input
-                data-testid="input-admin-password"
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(false); }}
-                placeholder="Enter password"
-                className={`w-full px-4 py-3.5 rounded-xl border ${error ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900" : "border-slate-200 dark:border-slate-700"} bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]`}
-                required
-                autoFocus
-              />
-              {error && <p className="text-sm text-red-500 mt-2" data-testid="text-admin-error">Incorrect password</p>}
-            </div>
-            <div className="flex gap-3 pb-2 safe-bottom">
-              <Button type="button" variant="outline" onClick={onCancel} className="flex-1 h-14 rounded-xl font-medium text-base" data-testid="button-admin-cancel">
-                Cancel
-              </Button>
-              <Button type="submit" data-testid="button-admin-unlock" className="flex-1 h-14 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base">
-                Unlock
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ─── RoomTile ─────────────────────────────────────────────────────────────────
-function RoomTile({
-  room,
-  onSelect,
-  onEdit,
-  onDelete,
-  adminMode,
-}: {
-  room: Room;
-  onSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  adminMode: boolean;
-}) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const speakerCount = room.speakers.length;
-
-  useEffect(() => {
-    if (confirmDelete) {
-      const timer = setTimeout(() => setConfirmDelete(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [confirmDelete]);
-
-  return (
-    <div
-      className="relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.97] overflow-hidden select-none"
-      onClick={onSelect}
-      data-testid={`tile-room-${room.id}`}
-    >
-      <div className="p-5 pb-4">
-        <div className="flex items-start justify-between mb-4">
-          {/* Speaker icon — stacked if multi */}
-          <div className="relative">
-            <div className="w-12 h-12 rounded-xl bg-[#FF8200] flex items-center justify-center text-white shadow-sm shadow-[#FF8200]/20">
-              <Speaker className="w-6 h-6" />
-            </div>
-            {speakerCount > 1 && (
-              <div
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-800 dark:bg-white text-white dark:text-slate-800 text-[10px] font-bold flex items-center justify-center shadow"
-                data-testid={`badge-speaker-count-${room.id}`}
-              >
-                {speakerCount}
-              </div>
-            )}
-          </div>
-
-          {adminMode && (
-            <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={onEdit}
-                className="p-2.5 rounded-xl text-[#707372] hover:text-[#FF8200] hover:bg-orange-50 dark:hover:bg-orange-900/20 active:bg-orange-100 transition-colors"
-                data-testid={`button-edit-room-${room.id}`}
-              >
-                <Pencil className="w-4.5 h-4.5" />
-              </button>
-              {confirmDelete ? (
-                <button
-                  onClick={onDelete}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-500 hover:bg-red-600 active:bg-red-700 transition-colors"
-                  data-testid={`button-confirm-delete-room-${room.id}`}
-                >
-                  Delete?
-                </button>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="p-2.5 rounded-xl text-[#707372] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 active:bg-red-100 transition-colors"
-                  data-testid={`button-delete-room-${room.id}`}
-                >
-                  <Trash2 className="w-4.5 h-4.5" />
-                </button>
-              )}
-            </div>
-          )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            {editRoom ? "Edit Room" : "Add Room"}
+          </h2>
+          <button onClick={onCancel} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700">
+            <X className="w-5 h-5 text-slate-400" />
+          </button>
         </div>
-
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate" data-testid={`text-room-name-${room.id}`}>
-          {room.name}
-        </h3>
-
-        {speakerCount === 1 ? (
-          <p className="text-sm text-[#707372] mt-1 truncate">{room.speakers[0].ipAddress}</p>
-        ) : (
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <span className="text-xs font-medium text-[#FF8200]">{speakerCount} speakers</span>
-            <span className="text-[#707372]/40">·</span>
-            <span className="text-xs text-[#707372] truncate">{room.speakers.map((s) => s.label).join(", ")}</span>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">Room Name</label>
+            <input data-testid="input-room-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Main Office" className={INPUT_CLS} />
           </div>
-        )}
+
+          {speakers.map((speaker, idx) => (
+            <div key={speaker.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Speaker {idx + 1}</span>
+                {speakers.length > 1 && (
+                  <button type="button" onClick={() => setSpeakers((prev) => prev.filter((_, i) => i !== idx))} className="p-1 rounded-lg hover:bg-red-50 text-red-400">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <input data-testid={`input-speaker-label-${idx}`} value={speaker.label} onChange={(e) => updateSpeaker(idx, "label", e.target.value)} placeholder="Label" className={INPUT_CLS} />
+              <input data-testid={`input-speaker-ip-${idx}`} value={speaker.ipAddress} onChange={(e) => updateSpeaker(idx, "ipAddress", e.target.value)} placeholder="IP Address" className={INPUT_CLS} />
+              <div className="grid grid-cols-2 gap-2">
+                <input data-testid={`input-speaker-user-${idx}`} value={speaker.username} onChange={(e) => updateSpeaker(idx, "username", e.target.value)} placeholder="Username" className={INPUT_CLS} />
+                <input data-testid={`input-speaker-pass-${idx}`} type="password" value={speaker.password} onChange={(e) => updateSpeaker(idx, "password", e.target.value)} placeholder="Password" className={INPUT_CLS} />
+              </div>
+            </div>
+          ))}
+
+          <button type="button" onClick={() => setSpeakers((prev) => [...prev, blankSpeaker(prev.length)])} className="flex items-center gap-2 text-sm text-[#FF8200] hover:text-[#e07200] font-medium">
+            <PlusCircle className="w-4 h-4" /> Add Speaker
+          </button>
+
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
+            <Button type="submit" className="flex-1 bg-[#FF8200] hover:bg-[#e07200] text-white" data-testid="button-save-room">
+              {editRoom ? "Save Changes" : "Add Room"}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
-// ─── RoomList ─────────────────────────────────────────────────────────────────
-function RoomList({
-  rooms,
-  onSelectRoom,
-  onAddRoom,
-  onEditRoom,
-  onDeleteRoom,
-  adminMode,
-  onToggleAdmin,
-  syncStatus,
-  onRefresh,
-}: {
-  rooms: Room[];
-  onSelectRoom: (room: Room) => void;
-  onAddRoom: () => void;
-  onEditRoom: (room: Room) => void;
-  onDeleteRoom: (id: string) => void;
-  adminMode: boolean;
-  onToggleAdmin: () => void;
-  syncStatus: "idle" | "synced" | "syncing" | "offline" | "error";
-  onRefresh: () => void;
+// ─── SpeakerCard ──────────────────────────────────────────────────────────────
+function SpeakerCard({ speaker, status, onVolumeSet, onVolumeInc, onVolumeDec, onMuteToggle }: {
+  speaker: SpeakerType;
+  status: SpeakerStatus | null;
+  onVolumeSet: (v: number) => void;
+  onVolumeInc: () => void;
+  onVolumeDec: () => void;
+  onMuteToggle: () => void;
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredRooms = useMemo(() => {
-    if (!searchQuery.trim()) return rooms;
-    const q = searchQuery.toLowerCase().trim();
-    return rooms.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.speakers.some((s) => s.ipAddress.includes(q) || s.label.toLowerCase().includes(q))
-    );
-  }, [rooms, searchQuery]);
+  const isMuted = status?.muteState === "mute";
+  const volume = status?.volume ?? 31;
+  const isConnected = status?.connected ?? false;
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col">
-      <header className="sticky top-0 z-10 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60 px-5 py-4 safe-top">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-3 border border-slate-200 dark:border-slate-600">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-semibold text-sm text-slate-800 dark:text-white">{speaker.label}</div>
+          <div className="text-xs text-slate-400">{speaker.ipAddress}</div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isConnected
+            ? <Wifi className="w-3.5 h-3.5 text-green-500" />
+            : <WifiOff className="w-3.5 h-3.5 text-red-400" />}
+          <button
+            data-testid={`button-mute-${speaker.id}`}
+            onClick={onMuteToggle}
+            className={`p-2 rounded-xl transition-colors ${isMuted
+              ? "bg-red-100 dark:bg-red-900/30 text-red-500"
+              : "bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300"}`}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {isConnected && (
+        <>
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-[#FF8200] flex items-center justify-center text-white shadow-sm shadow-[#FF8200]/20">
-              <HomeIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white" data-testid="text-main-title">Rooms</h1>
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs text-[#707372]">
-                  {rooms.length} {rooms.length === 1 ? "room" : "rooms"}
-                </p>
-                {syncStatus !== "idle" && <span className="text-[#707372]/40">·</span>}
-                {syncStatus === "syncing" && (
-                  <span className="flex items-center gap-1 text-xs text-[#FF8200]">
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                    <span>Syncing</span>
-                  </span>
-                )}
-                {syncStatus === "synced" && (
-                  <span className="text-xs text-emerald-500" data-testid="status-synced">Config saved</span>
-                )}
-                {(syncStatus === "offline" || syncStatus === "error") && (
-                  <button onClick={onRefresh} className="flex items-center gap-1 text-xs text-[#707372] hover:text-[#FF8200] transition-colors" data-testid="button-sync-retry">
-                    <CloudOff className="w-3 h-3" />
-                    <span>Local only — tap to retry</span>
-                  </button>
-                )}
-              </div>
+            <button data-testid={`button-vol-dec-${speaker.id}`} onClick={onVolumeDec} className="p-2 bg-slate-200 dark:bg-slate-600 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-500">
+              <Minus className="w-4 h-4" />
+            </button>
+            <Slider
+              value={[volume]}
+              min={0}
+              max={61}
+              step={1}
+              onValueChange={(v) => onVolumeSet(v[0])}
+              className="flex-1"
+              data-testid={`slider-volume-${speaker.id}`}
+            />
+            <button data-testid={`button-vol-inc-${speaker.id}`} onClick={onVolumeInc} className="p-2 bg-slate-200 dark:bg-slate-600 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-500">
+              <Plus className="w-4 h-4" />
+            </button>
+            <span className="w-8 text-right text-sm font-bold text-slate-700 dark:text-slate-200 tabular-nums">{volume}</span>
+          </div>
+
+          <div className="flex gap-2">
+            {[{ label: "Low", value: 15 }, { label: "Normal", value: 31 }, { label: "Loud", value: 48 }].map((p) => (
+              <button
+                key={p.label}
+                data-testid={`button-preset-vol-${p.label.toLowerCase()}-${speaker.id}`}
+                onClick={() => onVolumeSet(p.value)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${volume === p.value
+                  ? "bg-[#FF8200] text-white"
+                  : "bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-300"}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!isConnected && status !== null && (
+        <div className="flex items-center gap-2 text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+          <CloudOff className="w-3.5 h-3.5" /> Unreachable
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── RoomPanel ────────────────────────────────────────────────────────────────
+function RoomPanel({ room, onEdit, onDelete, isAdmin }: {
+  room: Room;
+  onEdit: () => void;
+  onDelete: () => void;
+  isAdmin: boolean;
+}) {
+  const { toast } = useToast();
+  const [statuses, setStatuses] = useState<Record<string, SpeakerStatus | null>>({});
+  const [syncMode, setSyncMode] = useState(room.syncMode);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    const results = await Promise.all(
+      room.speakers.map(async (s) => {
+        try {
+          const res = await apiFetch("/api/speaker/status", {
+            method: "POST",
+            body: JSON.stringify({ ipAddress: s.ipAddress, username: s.username, password: s.password }),
+          });
+          if (!res.ok) return [s.id, null];
+          return [s.id, await res.json()];
+        } catch {
+          return [s.id, null];
+        }
+      })
+    );
+    setStatuses(Object.fromEntries(results));
+  }, [room.speakers]);
+
+  useEffect(() => {
+    fetchStatus();
+    pollRef.current = setInterval(fetchStatus, 30000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [fetchStatus]);
+
+  const callSpeaker = async (speaker: SpeakerType, endpoint: string, body: object) => {
+    try {
+      const res = await apiFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ ipAddress: speaker.ipAddress, username: speaker.username, password: speaker.password, ...body }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await fetchStatus();
+    } catch (e: any) {
+      toast({ title: "Network error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const callAll = async (endpoint: string, body: object) => {
+    await Promise.all(room.speakers.map((s) => callSpeaker(s, endpoint, body)));
+  };
+
+  return (
+    <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
+            <SpeakerIcon className="w-5 h-5 text-[#FF8200]" />
+          </div>
+          <div>
+            <div className="font-bold text-slate-900 dark:text-white">{room.name}</div>
+            <div className="text-xs text-slate-400">{room.speakers.length} speaker{room.speakers.length > 1 ? "s" : ""}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {room.speakers.length > 1 && (
+            <button
+              data-testid={`button-sync-${room.id}`}
+              onClick={() => setSyncMode((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${syncMode ? "bg-[#FF8200]/10 text-[#FF8200]" : "bg-slate-100 dark:bg-slate-700 text-slate-500"}`}
+            >
+              {syncMode ? "Sync ON" : "Sync OFF"}
+            </button>
+          )}
+          <button data-testid={`button-refresh-${room.id}`} onClick={fetchStatus} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          {isAdmin && (
+            <>
+              <button data-testid={`button-edit-${room.id}`} onClick={onEdit} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button data-testid={`button-delete-${room.id}`} onClick={onDelete} className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <CardContent className="p-4 space-y-3">
+        {syncMode && room.speakers.length > 1 && (
+          <div className="bg-[#FF8200]/5 border border-[#FF8200]/20 rounded-xl p-3 mb-1">
+            <div className="text-xs font-semibold text-[#FF8200] mb-2">All Speakers (Sync Mode)</div>
+            <div className="flex gap-2">
+              <button onClick={() => callAll("/api/speaker/volume/decrement", {})} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Minus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
+              <button onClick={() => callAll("/api/speaker/volume/increment", {})} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Plus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
+              {[{ label: "Low", value: 15 }, { label: "Normal", value: 31 }, { label: "Loud", value: 48 }].map((p) => (
+                <button key={p.label} onClick={() => callAll("/api/speaker/volume/set", { volume: p.value })} className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-[#FF8200]/10 hover:text-[#FF8200] hover:border-[#FF8200]/30 transition-colors">
+                  {p.label}
+                </button>
+              ))}
+              <button onClick={() => callAll("/api/speaker/mute/set", { mute_state: "mute" })} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><VolumeX className="w-4 h-4" /></button>
+              <button onClick={() => callAll("/api/speaker/mute/set", { mute_state: "unmute" })} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><Volume2 className="w-4 h-4" /></button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {adminMode && (
-              <Button
-                onClick={onAddRoom}
-                data-testid="button-add-room"
-                className="h-11 px-5 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-sm"
+        )}
+
+        {room.speakers.map((speaker) => (
+          <SpeakerCard
+            key={speaker.id}
+            speaker={speaker}
+            status={statuses[speaker.id] ?? null}
+            onVolumeSet={(v) => callSpeaker(speaker, "/api/speaker/volume/set", { volume: v })}
+            onVolumeInc={() => callSpeaker(speaker, "/api/speaker/volume/increment", {})}
+            onVolumeDec={() => callSpeaker(speaker, "/api/speaker/volume/decrement", {})}
+            onMuteToggle={() => {
+              const current = statuses[speaker.id]?.muteState;
+              callSpeaker(speaker, "/api/speaker/mute/set", { mute_state: current === "mute" ? "unmute" : "mute" });
+            }}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── TTS Panel ────────────────────────────────────────────────────────────────
+function TtsPanel() {
+  const { user, refreshUser } = useAuth();
+  const { toast } = useToast();
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState<TtsRoutingMode>("direct");
+  const [targetAddress, setTargetAddress] = useState("");
+  const [pgExtension, setPgExtension] = useState("");
+  const [codec, setCodec] = useState<Codec>("PCMU");
+  const [dtmfDelay, setDtmfDelay] = useState(600);
+  const [chimeEnabled, setChimeEnabled] = useState(false);
+  const [chimeDelay, setChimeDelay] = useState(750);
+  const [sending, setSending] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [presets, setPresets] = useState<TtsPreset[]>(user?.presets || []);
+  const [addingPreset, setAddingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const [editPresetId, setEditPresetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPresets(user?.presets || []);
+  }, [user?.presets]);
+
+  async function handleSend(presetText?: string) {
+    const finalText = presetText ?? text;
+    if (!finalText.trim()) return;
+    if (!targetAddress.trim()) {
+      toast({ title: "Target required", description: "Enter a speaker IP or PG address", variant: "destructive" });
+      return;
+    }
+
+    setSending(true);
+    try {
+      const res = await apiFetch("/api/tts/send", {
+        method: "POST",
+        body: JSON.stringify({
+          text: finalText.trim(),
+          mode,
+          targetAddress: targetAddress.trim(),
+          pgExtension: mode === "pg" ? pgExtension.trim() : undefined,
+          codec,
+          dtmfDelayMs: mode === "pg" ? dtmfDelay : undefined,
+          chimeEnabled: mode === "pg" ? chimeEnabled : undefined,
+          chimeDelayMs: mode === "pg" && chimeEnabled ? chimeDelay : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Announcement failed", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: data.simulated ? "Simulated (TTS not installed)" : "Announcement sent",
+        description: data.simulated
+          ? "Kokoro TTS not installed — see IT Settings for setup instructions."
+          : "Your message was transmitted.",
+      });
+      if (!presetText) setText("");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function savePreset() {
+    if (!newPresetName.trim() || !text.trim()) return;
+    try {
+      const res = await apiFetch("/api/presets", {
+        method: "POST",
+        body: JSON.stringify({ name: newPresetName.trim(), text: text.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await refreshUser();
+      setNewPresetName("");
+      setAddingPreset(false);
+      toast({ title: "Preset saved" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  }
+
+  async function deletePreset(id: string) {
+    try {
+      await apiFetch(`/api/presets/${id}`, { method: "DELETE" });
+      await refreshUser();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  }
+
+  async function updatePreset(id: string, name: string, presetText: string) {
+    try {
+      await apiFetch(`/api/presets/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, text: presetText }),
+      });
+      await refreshUser();
+      setEditPresetId(null);
+      toast({ title: "Preset updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-2xl overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+        <div className="w-9 h-9 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
+          <Mic className="w-5 h-5 text-[#FF8200]" />
+        </div>
+        <div>
+          <div className="font-bold text-slate-900 dark:text-white">TTS Paging</div>
+          <div className="text-xs text-slate-400">Text-to-Speech announcement</div>
+        </div>
+      </div>
+
+      <CardContent className="p-5 space-y-5">
+        {/* Text input */}
+        <div>
+          <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">Announcement Text</label>
+          <textarea
+            data-testid="input-tts-text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Type your announcement here…"
+            rows={3}
+            className={INPUT_CLS + " resize-none"}
+            maxLength={2000}
+          />
+          <div className="text-right text-xs text-slate-400 mt-1">{text.length}/2000</div>
+        </div>
+
+        {/* Routing mode */}
+        <div>
+          <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Routing Mode</label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { value: "direct", label: "Direct SIP", icon: Wifi, desc: "Peer-to-peer to speaker" },
+              { value: "pg", label: "PG Gateway", icon: Radio, desc: "Via IP-A1PG multicast" },
+            ].map(({ value, label, icon: Icon, desc }) => (
+              <button
+                key={value}
+                data-testid={`button-mode-${value}`}
+                onClick={() => setMode(value as TtsRoutingMode)}
+                className={`flex flex-col items-start gap-1 p-3 rounded-xl border-2 transition-all text-left ${mode === value
+                  ? "border-[#FF8200] bg-[#FF8200]/5"
+                  : "border-slate-200 dark:border-slate-600 hover:border-slate-300"}`}
               >
-                <PlusCircle className="w-4 h-4 mr-1.5" />
-                Add Room
-              </Button>
+                <div className="flex items-center gap-2">
+                  <Icon className={`w-4 h-4 ${mode === value ? "text-[#FF8200]" : "text-slate-400"}`} />
+                  <span className={`text-sm font-semibold ${mode === value ? "text-[#FF8200]" : "text-slate-700 dark:text-slate-200"}`}>{label}</span>
+                </div>
+                <span className="text-xs text-slate-400">{desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Target address */}
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">
+              {mode === "direct" ? "Speaker IP Address" : "PG Server Address"}
+            </label>
+            <input
+              data-testid="input-target-address"
+              value={targetAddress}
+              onChange={(e) => setTargetAddress(e.target.value)}
+              placeholder={mode === "direct" ? "192.168.1.100" : "192.168.1.50"}
+              className={INPUT_CLS}
+            />
+          </div>
+          {mode === "pg" && (
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">
+                <Hash className="w-3.5 h-3.5 inline mr-1" />Zone Extension / DTMF
+              </label>
+              <input
+                data-testid="input-pg-extension"
+                value={pgExtension}
+                onChange={(e) => setPgExtension(e.target.value)}
+                placeholder="e.g., 1 for Zone 1"
+                className={INPUT_CLS}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Codec */}
+        <div>
+          <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">Audio Codec</label>
+          <div className="flex gap-2">
+            {(["PCMU", "PCMA", "G722"] as Codec[]).map((c) => (
+              <button
+                key={c}
+                data-testid={`button-codec-${c}`}
+                onClick={() => setCodec(c)}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${codec === c
+                  ? "border-[#FF8200] bg-[#FF8200]/10 text-[#FF8200]"
+                  : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300"}`}
+              >
+                {c === "PCMU" ? "G.711u" : c === "PCMA" ? "G.711a" : "G.722"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* PG delays */}
+        {mode === "pg" && (
+          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-4 border border-slate-200 dark:border-slate-600">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">PG Timing</div>
+
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-300">DTMF Delay</label>
+                <span className="text-sm font-bold text-[#FF8200]">{dtmfDelay}ms</span>
+              </div>
+              <input
+                data-testid="input-dtmf-delay"
+                type="range"
+                min={200}
+                max={2000}
+                step={50}
+                value={dtmfDelay}
+                onChange={(e) => setDtmfDelay(Number(e.target.value))}
+                className="w-full accent-[#FF8200]"
+              />
+              <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>200ms</span><span>2000ms</span></div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-slate-600 dark:text-slate-300">Enable Chime</div>
+                <div className="text-xs text-slate-400">Play tone before announcement</div>
+              </div>
+              <button
+                data-testid="button-chime-toggle"
+                onClick={() => setChimeEnabled((v) => !v)}
+                className={`w-12 h-6 rounded-full transition-colors relative ${chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${chimeEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {chimeEnabled && (
+              <div>
+                <div className="flex justify-between mb-1.5">
+                  <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Post-Chime Delay</label>
+                  <span className="text-sm font-bold text-[#FF8200]">{chimeDelay}ms</span>
+                </div>
+                <input
+                  data-testid="input-chime-delay"
+                  type="range"
+                  min={300}
+                  max={3000}
+                  step={50}
+                  value={chimeDelay}
+                  onChange={(e) => setChimeDelay(Number(e.target.value))}
+                  className="w-full accent-[#FF8200]"
+                />
+                <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>300ms</span><span>3000ms</span></div>
+              </div>
             )}
+          </div>
+        )}
+
+        {/* Send button */}
+        <Button
+          data-testid="button-send-tts"
+          onClick={() => handleSend()}
+          disabled={sending || !text.trim()}
+          className="w-full bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl py-3 text-base font-semibold shadow-md shadow-orange-100"
+        >
+          {sending
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending…</>
+            : <><Send className="w-4 h-4 mr-2" />Send Announcement</>}
+        </Button>
+
+        {/* Presets */}
+        <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <Bookmark className="w-3.5 h-3.5" /> Presets ({presets.length}/5)
+            </span>
+            {presets.length < 5 && text.trim() && (
+              <button
+                data-testid="button-add-preset"
+                onClick={() => setAddingPreset(true)}
+                className="text-xs text-[#FF8200] font-semibold hover:text-[#e07200] flex items-center gap-1"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Save as preset
+              </button>
+            )}
+          </div>
+
+          {addingPreset && (
+            <div className="flex gap-2 mb-3">
+              <input
+                data-testid="input-preset-name"
+                value={newPresetName}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                placeholder="Preset name"
+                className={INPUT_CLS + " text-sm py-2"}
+              />
+              <button onClick={savePreset} className="px-4 py-2 bg-[#FF8200] text-white rounded-xl text-sm font-semibold">Save</button>
+              <button onClick={() => { setAddingPreset(false); setNewPresetName(""); }} className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-xl text-sm">Cancel</button>
+            </div>
+          )}
+
+          {presets.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-3">No presets saved yet. Type a message and save it as a preset for quick access.</p>
+          )}
+
+          <div className="space-y-2">
+            {presets.map((preset) => (
+              <PresetRow
+                key={preset.id}
+                preset={preset}
+                onSend={() => handleSend(preset.text)}
+                onDelete={() => deletePreset(preset.id)}
+                onUpdate={(name, t) => updatePreset(preset.id, name, t)}
+                isEditing={editPresetId === preset.id}
+                onEditStart={() => setEditPresetId(preset.id)}
+                onEditCancel={() => setEditPresetId(null)}
+                sending={sending}
+              />
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PresetRow({ preset, onSend, onDelete, onUpdate, isEditing, onEditStart, onEditCancel, sending }: {
+  preset: TtsPreset;
+  onSend: () => void;
+  onDelete: () => void;
+  onUpdate: (name: string, text: string) => void;
+  isEditing: boolean;
+  onEditStart: () => void;
+  onEditCancel: () => void;
+  sending: boolean;
+}) {
+  const [name, setName] = useState(preset.name);
+  const [text, setText] = useState(preset.text);
+
+  if (isEditing) {
+    return (
+      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 space-y-2 border border-slate-200 dark:border-slate-600">
+        <input data-testid={`input-edit-preset-name-${preset.id}`} value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200]" />
+        <textarea data-testid={`input-edit-preset-text-${preset.id}`} value={text} onChange={(e) => setText(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] resize-none" />
+        <div className="flex gap-2">
+          <button onClick={() => onUpdate(name, text)} className="px-3 py-1.5 bg-[#FF8200] text-white rounded-lg text-xs font-semibold">Save</button>
+          <button onClick={onEditCancel} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs">Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-600">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{preset.name}</div>
+        <div className="text-xs text-slate-400 truncate">{preset.text}</div>
+      </div>
+      <button data-testid={`button-send-preset-${preset.id}`} onClick={onSend} disabled={sending} className="p-1.5 rounded-lg bg-[#FF8200]/10 text-[#FF8200] hover:bg-[#FF8200]/20 transition-colors">
+        <Send className="w-3.5 h-3.5" />
+      </button>
+      <button data-testid={`button-edit-preset-${preset.id}`} onClick={onEditStart} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400">
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+      <button data-testid={`button-delete-preset-${preset.id}`} onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Home Page ───────────────────────────────────────────────────────────
+export default function Home() {
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [showAddRoom, setShowAddRoom] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  const isAdmin = user?.role === "admin";
+  const isIt = user?.role === "it";
+
+  async function loadRooms() {
+    try {
+      const res = await apiFetch("/api/rooms");
+      if (res.ok) setRooms(await res.json());
+    } catch {}
+  }
+
+  useEffect(() => {
+    loadRooms();
+  }, []);
+
+  async function saveRooms(updatedRooms: Room[]) {
+    try {
+      const res = await apiFetch("/api/rooms", {
+        method: "PUT",
+        body: JSON.stringify(updatedRooms),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Save failed" }));
+        toast({ title: "Save failed", description: err.error, variant: "destructive" });
+        return;
+      }
+      setRooms(updatedRooms);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
+
+  function handleAddRoom(room: Room) {
+    const updated = editingRoom
+      ? rooms.map((r) => r.id === room.id ? room : r)
+      : [...rooms, room];
+    saveRooms(updated);
+    setShowAddRoom(false);
+    setEditingRoom(null);
+  }
+
+  function handleDeleteRoom(id: string) {
+    if (!confirm("Delete this room?")) return;
+    saveRooms(rooms.filter((r) => r.id !== id));
+  }
+
+  const filteredRooms = rooms.filter((r) =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+      {/* Navbar */}
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-[#FF8200] rounded-xl flex items-center justify-center">
+              <Radio className="w-4.5 h-4.5 text-white" />
+            </div>
+            <span className="font-bold text-slate-900 dark:text-white text-lg">REPIT</span>
+          </div>
+
+          <SystemStatusBar />
+
+          <div className="flex items-center gap-2 relative">
+            {(isAdmin || isIt) && (
+              <>
+                {isAdmin && (
+                  <button
+                    data-testid="button-admin-panel"
+                    onClick={() => navigate("/admin")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span className="hidden sm:inline">Admin</span>
+                  </button>
+                )}
+                {isIt && (
+                  <button
+                    data-testid="button-it-settings"
+                    onClick={() => navigate("/it-settings")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span className="hidden sm:inline">IT Settings</span>
+                  </button>
+                )}
+              </>
+            )}
+
             <button
-              onClick={onToggleAdmin}
-              data-testid="button-admin-toggle"
-              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 ${
-                adminMode
-                  ? "bg-[#FF8200] text-white shadow-sm shadow-[#FF8200]/20"
-                  : "bg-slate-100 dark:bg-slate-800 text-[#707372] hover:bg-slate-200 dark:hover:bg-slate-700"
-              }`}
+              data-testid="button-user-menu"
+              onClick={() => setShowUserMenu((v) => !v)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200"
             >
-              {adminMode ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+              <div className="w-7 h-7 bg-[#FF8200]/10 rounded-full flex items-center justify-center text-[#FF8200] font-bold text-xs">
+                {user?.displayName?.[0]?.toUpperCase() || "U"}
+              </div>
+              <span className="hidden sm:inline">{user?.displayName}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
+
+            {showUserMenu && (
+              <div className="absolute right-0 top-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-48 py-1 z-50">
+                <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700">
+                  <div className="text-sm font-semibold text-slate-800 dark:text-white">{user?.displayName}</div>
+                  <div className="text-xs text-slate-400 capitalize">{user?.role}</div>
+                </div>
+                <button
+                  data-testid="button-logout"
+                  onClick={() => { logout(); navigate("/login"); }}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-5 py-5">
-        <div className="max-w-3xl mx-auto">
-          {rooms.length === 0 ? (
-            <div className="text-center py-24">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 text-[#707372] mb-5">
-                <Speaker className="w-10 h-10" />
+      {/* Main content */}
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {/* TTS Panel (if enabled for this user) */}
+        {user?.ttsEnabled && <TtsPanel />}
+
+        {/* Volume Control section */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <SpeakerIcon className="w-5 h-5 text-[#FF8200]" /> Volume Control
+            </h2>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  data-testid="input-search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search rooms…"
+                  className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] w-40"
+                />
               </div>
-              <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2" data-testid="text-empty-title">No rooms yet</h2>
-              <p className="text-base text-[#707372] mb-8 max-w-xs mx-auto">
-                {adminMode
-                  ? "Add your first classroom to start controlling its speaker"
-                  : "Tap the lock icon to unlock admin access and add rooms"}
-              </p>
-              {adminMode && (
+              {(isAdmin || isIt) && (
                 <Button
-                  onClick={onAddRoom}
-                  data-testid="button-add-room-empty"
-                  className="h-14 px-8 rounded-xl bg-[#FF8200] hover:bg-[#e67400] text-white font-semibold shadow-lg shadow-[#FF8200]/25 text-base"
+                  data-testid="button-add-room"
+                  onClick={() => { setEditingRoom(null); setShowAddRoom(true); }}
+                  className="bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl text-sm font-semibold px-4 py-2"
                 >
-                  <PlusCircle className="w-5 h-5 mr-2" />
-                  Add Your First Room
+                  <PlusCircle className="w-4 h-4 mr-1.5" /> Add Room
                 </Button>
               )}
             </div>
+          </div>
+
+          {filteredRooms.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <Radio className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No rooms yet</p>
+              <p className="text-sm mt-1">{isAdmin || isIt ? "Add a room to get started." : "No rooms have been assigned to your account."}</p>
+            </div>
           ) : (
-            <>
-              {rooms.length > 5 && (
-                <div className="relative mb-4">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#707372]" />
-                  <input
-                    data-testid="input-search-rooms"
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search rooms or speaker IPs..."
-                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-[#707372]/50 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-[16px]"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded-lg text-[#707372] hover:text-slate-600 transition-colors"
-                      data-testid="button-clear-search"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              )}
-              {searchQuery && filteredRooms.length === 0 ? (
-                <div className="text-center py-16">
-                  <p className="text-base text-[#707372]">No rooms match "{searchQuery}"</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredRooms.map((room) => (
-                    <RoomTile
-                      key={room.id}
-                      room={room}
-                      onSelect={() => onSelectRoom(room)}
-                      onEdit={() => onEditRoom(room)}
-                      onDelete={() => onDeleteRoom(room.id)}
-                      adminMode={adminMode}
-                    />
-                  ))}
-                  {adminMode && !searchQuery && (
-                    <button
-                      onClick={onAddRoom}
-                      data-testid="button-add-room-tile"
-                      className="min-h-[130px] rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-2.5 text-[#707372] hover:text-[#FF8200] hover:border-[#FF8200]/40 transition-all active:scale-[0.97]"
-                    >
-                      <PlusCircle className="w-7 h-7" />
-                      <span className="text-sm font-medium">Add Room</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredRooms.map((room) => (
+                <RoomPanel
+                  key={room.id}
+                  room={room}
+                  isAdmin={isAdmin || isIt}
+                  onEdit={() => { setEditingRoom(room); setShowAddRoom(true); }}
+                  onDelete={() => handleDeleteRoom(room.id)}
+                />
+              ))}
+            </div>
           )}
         </div>
       </main>
 
-      <footer className="text-center pb-5 px-5 safe-bottom">
-        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
-      </footer>
-    </div>
-  );
-}
-
-// ─── VolumeKnobDisplay ────────────────────────────────────────────────────────
-function VolumeKnobDisplay({ volume, max }: { volume: number; max: number }) {
-  const percentage = max > 0 ? Math.round((volume / max) * 100) : 0;
-  const r = 58;
-  const circumference = 2 * Math.PI * r;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
-  const size = 180;
-  const cx = size / 2;
-
-  return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={size} height={size} className="transform -rotate-90">
-        <circle cx={cx} cy={cx} r={r} stroke="currentColor" className="text-slate-200 dark:text-slate-700" strokeWidth="12" fill="none" />
-        <circle cx={cx} cy={cx} r={r} stroke="#FF8200" strokeWidth="12" fill="none" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="transition-all duration-300 ease-out" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-5xl font-bold text-slate-900 dark:text-white tabular-nums" data-testid="text-volume-percentage">
-          {percentage}%
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── useSpeakerState hook ─────────────────────────────────────────────────────
-// Manages status, volume, mute for a single speaker connection.
-function useSpeakerState(sp: SpeakerType, showToasts = true) {
-  const { toast } = useToast();
-  const [status, setStatus] = useState<SpeakerStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [changingVolume, setChangingVolume] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const [sliderValue, setSliderValue] = useState<number | null>(null);
-  const wasConnectedRef = useRef(true);
-
-  const connKey = `${sp.ipAddress}|${sp.username}|${sp.password}`;
-  const conn = { ipAddress: sp.ipAddress, username: sp.username, password: sp.password };
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/speaker/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(conn),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "Could not reach speaker" }));
-        throw new Error(errData.error || "Could not reach speaker");
-      }
-      const data: SpeakerStatus = await res.json();
-      setStatus(data);
-      if (sliderValue === null) setSliderValue(data.volume);
-      if (!wasConnectedRef.current) {
-        wasConnectedRef.current = true;
-        if (showToasts) toast({ title: "Reconnected", description: `${sp.label} connection restored` });
-      }
-    } catch (err: any) {
-      setStatus((prev) =>
-        prev ? { ...prev, connected: false } : { volume: 0, max: 61, min: 0, muteState: "unmute" as const, connected: false }
-      );
-      if (wasConnectedRef.current) {
-        wasConnectedRef.current = false;
-        if (showToasts) toast({ title: "Connection Lost", description: err.message || `Could not reach ${sp.label}`, variant: "destructive" });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [connKey, sliderValue, showToasts]);
-
-  useEffect(() => {
-    fetchStatus();
-    const id = setInterval(fetchStatus, 10000);
-    return () => clearInterval(id);
-  }, [fetchStatus]);
-
-  const setVolume = useCallback(async (vol: number) => {
-    setChangingVolume(true);
-    try {
-      const res = await fetch("/api/speaker/volume/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...conn, volume: vol }),
-      });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-      const data = await res.json();
-      setStatus((prev) => prev ? { ...prev, volume: data.volume, connected: true } : prev);
-      setSliderValue(data.volume);
-    } catch (err: any) {
-      if (showToasts) toast({ title: "Volume Error", description: err.message, variant: "destructive" });
-    } finally { setChangingVolume(false); }
-  }, [connKey, showToasts]);
-
-  const handleSliderChange = useCallback((value: number[]) => {
-    const newVol = value[0];
-    setSliderValue(newVol);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setVolume(newVol), 300);
-  }, [setVolume]);
-
-  const toggleMute = useCallback(async () => {
-    if (!status) return;
-    const newState = status.muteState === "mute" ? "unmute" : "mute";
-    try {
-      const res = await fetch("/api/speaker/mute/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...conn, mute_state: newState }),
-      });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-      const data = await res.json();
-      setStatus((prev) => prev ? { ...prev, muteState: data.mute_state, connected: true } : prev);
-      if (showToasts) toast({ title: data.mute_state === "mute" ? "Speaker Muted" : "Speaker Unmuted" });
-    } catch (err: any) {
-      if (showToasts) toast({ title: "Mute Error", description: err.message, variant: "destructive" });
-    }
-  }, [status, connKey, showToasts]);
-
-  const setMuteState = useCallback(async (newState: "mute" | "unmute") => {
-    try {
-      const res = await fetch("/api/speaker/mute/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...conn, mute_state: newState }),
-      });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-      const data = await res.json();
-      setStatus((prev) => prev ? { ...prev, muteState: data.mute_state, connected: true } : prev);
-    } catch (err: any) {
-      if (showToasts) toast({ title: "Mute Error", description: err.message, variant: "destructive" });
-    }
-  }, [connKey, showToasts]);
-
-  const adjustVolume = useCallback(async (direction: "increment" | "decrement") => {
-    try {
-      const res = await fetch(`/api/speaker/volume/${direction}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(conn),
-      });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-      const data = await res.json();
-      setStatus((prev) => prev ? { ...prev, volume: data.volume, connected: true } : prev);
-      setSliderValue(data.volume);
-    } catch (err: any) {
-      if (showToasts) toast({ title: "Error", description: err.message, variant: "destructive" });
-    }
-  }, [connKey, showToasts]);
-
-  const currentVolume = sliderValue ?? status?.volume ?? 0;
-  const maxVolume = status?.max ?? 61;
-  const isMuted = status?.muteState === "mute";
-
-  return { status, loading, changingVolume, currentVolume, maxVolume, isMuted, setVolume, handleSliderChange, toggleMute, setMuteState, adjustVolume, setSliderValue };
-}
-
-// ─── VolumeControls (shared UI block) ────────────────────────────────────────
-function VolumeControls({
-  currentVolume,
-  maxVolume,
-  isMuted,
-  changingVolume,
-  onSliderChange,
-  onDecrement,
-  onIncrement,
-  onMuteToggle,
-  onPreset,
-  muteLabel,
-  testPrefix = "",
-}: {
-  currentVolume: number;
-  maxVolume: number;
-  isMuted: boolean;
-  changingVolume: boolean;
-  onSliderChange: (v: number[]) => void;
-  onDecrement: () => void;
-  onIncrement: () => void;
-  onMuteToggle: () => void;
-  onPreset: (v: number) => void;
-  muteLabel?: string;
-  testPrefix?: string;
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-4">
-        <button
-          onClick={onDecrement}
-          className="flex-shrink-0 w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#707372] hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 transition-all shadow-sm"
-          data-testid={`${testPrefix}button-volume-down`}
-        >
-          <Minus className="w-6 h-6" />
-        </button>
-        <div className="flex-1 py-2">
-          <Slider
-            data-testid={`${testPrefix}slider-volume`}
-            value={[currentVolume]}
-            min={0}
-            max={maxVolume}
-            step={1}
-            onValueChange={onSliderChange}
-            className="cursor-pointer touch-none"
-            disabled={changingVolume}
-          />
-        </div>
-        <button
-          onClick={onIncrement}
-          className="flex-shrink-0 w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#707372] hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 transition-all shadow-sm"
-          data-testid={`${testPrefix}button-volume-up`}
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      </div>
-      <div className="flex justify-between text-xs text-[#707372] px-[72px]">
-        <span>Mute</span><span>Max</span>
-      </div>
-
-      <button
-        onClick={onMuteToggle}
-        data-testid={`${testPrefix}button-mute`}
-        className={`w-full h-16 rounded-2xl font-semibold text-lg flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.97] ${
-          isMuted
-            ? "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white shadow-lg shadow-red-500/25"
-            : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm"
-        }`}
-      >
-        <VolumeX className="w-6 h-6" />
-        {isMuted ? `Unmute${muteLabel ? ` ${muteLabel}` : ""}` : `Mute${muteLabel ? ` ${muteLabel}` : ""}`}
-      </button>
-
-      <div className="grid grid-cols-3 gap-4">
-        {VOLUME_PRESETS.map((preset) => {
-          const isActive = currentVolume >= preset.value - 2 && currentVolume <= preset.value + 2;
-          const PresetIcon = preset.icon;
-          return (
-            <button
-              key={preset.label}
-              onClick={() => onPreset(preset.value)}
-              data-testid={`${testPrefix}button-preset-${preset.label.toLowerCase()}`}
-              className={`h-20 rounded-2xl font-semibold text-sm flex flex-col items-center justify-center gap-2 transition-all duration-200 active:scale-95 ${
-                isActive
-                  ? "bg-[#FF8200] text-white shadow-lg shadow-[#FF8200]/25"
-                  : "bg-white dark:bg-slate-800 text-[#707372] border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 shadow-sm"
-              }`}
-            >
-              <PresetIcon className="w-5 h-5" />
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── IndividualSpeakerCard ────────────────────────────────────────────────────
-// Self-contained card for one speaker in individual mode.
-function IndividualSpeakerCard({ speaker }: { speaker: SpeakerType }) {
-  const ctrl = useSpeakerState(speaker, true);
-
-  return (
-    <div
-      className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"
-      data-testid={`card-speaker-${speaker.id}`}
-    >
-      {/* Card header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-700/60">
-        <div className="w-8 h-8 rounded-lg bg-[#FF8200] flex items-center justify-center flex-shrink-0">
-          <Speaker className="w-4 h-4 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{speaker.label}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ctrl.status?.connected ? "bg-emerald-500" : "bg-red-400"}`} />
-            <span className="text-xs text-[#707372] truncate">{speaker.ipAddress}</span>
-          </div>
-        </div>
-        <span className="text-2xl font-bold text-slate-700 dark:text-slate-200 tabular-nums">
-          {ctrl.maxVolume > 0 ? Math.round((ctrl.currentVolume / ctrl.maxVolume) * 100) : 0}%
-        </span>
-      </div>
-
-      {ctrl.loading ? (
-        <div className="px-5 py-6 text-center">
-          <p className="text-sm text-[#707372]">Connecting…</p>
-        </div>
-      ) : !ctrl.status?.connected ? (
-        <div className="px-5 py-4 flex items-center gap-2 text-red-500">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <p className="text-sm">Speaker unreachable</p>
-        </div>
-      ) : (
-        <div className="px-5 py-4">
-          <VolumeControls
-            currentVolume={ctrl.currentVolume}
-            maxVolume={ctrl.maxVolume}
-            isMuted={ctrl.isMuted}
-            changingVolume={ctrl.changingVolume}
-            onSliderChange={ctrl.handleSliderChange}
-            onDecrement={() => ctrl.adjustVolume("decrement")}
-            onIncrement={() => ctrl.adjustVolume("increment")}
-            onMuteToggle={ctrl.toggleMute}
-            onPreset={(v) => { ctrl.setSliderValue(v); ctrl.setVolume(v); }}
-            testPrefix={`sp-${speaker.id}-`}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ControlPanel ─────────────────────────────────────────────────────────────
-function ControlPanel({ room, onBack }: { room: Room; onBack: () => void }) {
-  const { toast } = useToast();
-  const isMulti = room.speakers.length > 1;
-  const [syncMode, setSyncMode] = useState(room.syncMode ?? true);
-
-  // Primary speaker state (always active — drives the sync controls + single-speaker mode)
-  const primary = useSpeakerState(room.speakers[0], !isMulti || syncMode);
-
-  // For sync mode status of all other speakers (connection dots only)
-  const [otherStatuses, setOtherStatuses] = useState<(SpeakerStatus | null)[]>(
-    () => room.speakers.slice(1).map(() => null)
-  );
-
-  // Poll non-primary speakers for connection status when in sync mode
-  useEffect(() => {
-    if (!isMulti || !syncMode) return;
-    const others = room.speakers.slice(1);
-    if (others.length === 0) return;
-
-    const poll = async () => {
-      const results = await Promise.allSettled(
-        others.map((sp) =>
-          fetch("/api/speaker/status", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password }),
-          }).then((r) => {
-            if (!r.ok) throw new Error("failed");
-            return r.json() as Promise<SpeakerStatus>;
-          })
-        )
-      );
-      setOtherStatuses(
-        results.map((r) =>
-          r.status === "fulfilled"
-            ? r.value
-            : { volume: 0, max: 61, min: 0, muteState: "unmute" as const, connected: false }
-        )
-      );
-    };
-
-    poll();
-    const id = setInterval(poll, 10000);
-    return () => clearInterval(id);
-  }, [isMulti, syncMode, room.speakers.map((s) => s.ipAddress).join(",")]);
-
-  // Fire volume to all speakers in sync mode
-  const setVolumeAll = useCallback(async (vol: number) => {
-    primary.setSliderValue(vol);
-    await Promise.allSettled(
-      room.speakers.map((sp) =>
-        fetch("/api/speaker/volume/set", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password, volume: vol }),
-        })
-      )
-    );
-    primary.setVolume(vol);
-  }, [room.speakers, primary.setVolume, primary.setSliderValue]);
-
-  const handleSyncSlider = useCallback((value: number[]) => {
-    primary.setSliderValue(value[0]);
-    setVolumeAll(value[0]);
-  }, [setVolumeAll, primary.setSliderValue]);
-
-  // Fire mute to all speakers in sync mode
-  const toggleMuteAll = useCallback(async () => {
-    if (!primary.status) return;
-    const newState = primary.isMuted ? "unmute" : "mute";
-    await Promise.allSettled(
-      room.speakers.map((sp) =>
-        fetch("/api/speaker/mute/set", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ipAddress: sp.ipAddress, username: sp.username, password: sp.password, mute_state: newState }),
-        })
-      )
-    );
-    primary.setMuteState(newState);
-    toast({ title: newState === "mute" ? "All Speakers Muted" : "All Speakers Unmuted" });
-  }, [primary.status, primary.isMuted, primary.setMuteState, room.speakers, toast]);
-
-  // All speaker connection statuses (primary + others)
-  const allStatuses = [primary.status, ...otherStatuses];
-  const connectedCount = allStatuses.filter((s) => s?.connected).length;
-
-  if (primary.loading && !isMulti) {
-    return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#FF8200] text-white mb-5 animate-pulse shadow-lg shadow-[#FF8200]/25">
-            <Speaker className="w-10 h-10" />
-          </div>
-          <p className="text-base text-[#707372] font-medium" data-testid="text-connecting">Connecting to {room.name}…</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60 px-5 py-3 safe-top">
-        <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button
-            onClick={onBack}
-            className="p-3 -ml-3 rounded-xl text-[#707372] hover:text-slate-700 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-800 active:bg-slate-200 transition-colors"
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 truncate" data-testid="text-room-title">
-              {room.name}
-            </h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {isMulti ? (
-                <>
-                  <span className="text-xs text-[#707372]">{connectedCount}/{room.speakers.length} connected</span>
-                  {/* Speaker dots */}
-                  <span className="text-[#707372]/40 mx-0.5">·</span>
-                  <div className="flex gap-1">
-                    {room.speakers.map((sp, i) => (
-                      <div
-                        key={sp.id}
-                        title={sp.label}
-                        className={`w-2 h-2 rounded-full ${allStatuses[i]?.connected ? "bg-emerald-500" : "bg-red-400"}`}
-                        data-testid={`dot-speaker-${sp.id}`}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${primary.status?.connected ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-red-500 shadow-sm shadow-red-500/50"}`} data-testid="status-connection" />
-                  <span className="text-xs text-[#707372] truncate">{room.speakers[0].ipAddress}</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Sync / Individual toggle for multi-speaker rooms */}
-          {isMulti && (
-            <button
-              onClick={() => setSyncMode((v) => !v)}
-              data-testid="button-sync-toggle"
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
-                syncMode
-                  ? "bg-[#FF8200] text-white shadow-sm shadow-[#FF8200]/20"
-                  : "bg-slate-100 dark:bg-slate-800 text-[#707372] hover:bg-slate-200 dark:hover:bg-slate-700"
-              }`}
-            >
-              {syncMode ? <Link2 className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
-              {syncMode ? "Synced" : "Individual"}
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* ── SYNC MODE (or single speaker) ── */}
-      {syncMode && (
-        <>
-          {!primary.status?.connected && (
-            <div className="mx-5 mt-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-2.5">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-700 dark:text-red-400">
-                {isMulti ? "Primary speaker unreachable" : "Speaker unreachable — check network and credentials"}
-              </p>
-            </div>
-          )}
-
-          <main className="flex-1 flex flex-col items-center justify-center px-5 py-8">
-            <div className="w-full max-w-sm space-y-10">
-              <div className="text-center">
-                <VolumeKnobDisplay volume={primary.currentVolume} max={primary.maxVolume} />
-                {isMulti && (
-                  <p className="text-xs text-[#707372] mt-2">Controls all {room.speakers.length} speakers together</p>
-                )}
-              </div>
-
-              <VolumeControls
-                currentVolume={primary.currentVolume}
-                maxVolume={primary.maxVolume}
-                isMuted={primary.isMuted}
-                changingVolume={primary.changingVolume}
-                onSliderChange={isMulti ? handleSyncSlider : primary.handleSliderChange}
-                onDecrement={() => isMulti ? setVolumeAll(Math.max(0, primary.currentVolume - 1)) : primary.adjustVolume("decrement")}
-                onIncrement={() => isMulti ? setVolumeAll(Math.min(primary.maxVolume, primary.currentVolume + 1)) : primary.adjustVolume("increment")}
-                onMuteToggle={isMulti ? toggleMuteAll : primary.toggleMute}
-                onPreset={(v) => { primary.setSliderValue(v); isMulti ? setVolumeAll(v) : primary.setVolume(v); }}
-                muteLabel={isMulti ? "All" : "Speaker"}
-              />
-
-              {/* Per-speaker connection status strip (multi only) */}
-              {isMulti && (
-                <div className="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/60 shadow-sm">
-                  {room.speakers.map((sp, i) => (
-                    <div key={sp.id} className="flex items-center gap-3 px-4 py-3" data-testid={`row-speaker-status-${sp.id}`}>
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${allStatuses[i]?.connected ? "bg-emerald-500" : "bg-red-400"}`} />
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1">{sp.label}</span>
-                      <span className="text-xs text-[#707372]">{sp.ipAddress}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </main>
-        </>
-      )}
-
-      {/* ── INDIVIDUAL MODE ── */}
-      {!syncMode && isMulti && (
-        <main className="flex-1 px-5 py-5 overflow-y-auto">
-          <div className="max-w-lg mx-auto space-y-4">
-            <p className="text-xs text-[#707372] text-center mb-1">Each speaker is controlled independently</p>
-            {room.speakers.map((sp) => (
-              <IndividualSpeakerCard key={sp.id} speaker={sp} />
-            ))}
-          </div>
-        </main>
-      )}
-
-      <footer className="text-center pb-5 px-5 safe-bottom">
-        <p className="text-xs text-[#707372]/60">IP-A1 Volume Controller</p>
-      </footer>
-    </div>
-  );
-}
-
-// ─── Home (root) ──────────────────────────────────────────────────────────────
-export default function Home() {
-  const [rooms, setRooms] = useState<Room[]>(() => loadRoomsFromCache());
-  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-  const [adminMode, setAdminMode] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "synced" | "syncing" | "offline" | "error">("syncing");
-  const { toast } = useToast();
-
-  const loadFromServer = useCallback(async () => {
-    setSyncStatus("syncing");
-    try {
-      const serverRooms = await fetchRoomsFromServer();
-      setRooms(serverRooms);
-      saveRoomsToCache(serverRooms);
-      setSyncStatus("idle");
-    } catch {
-      const cached = loadRoomsFromCache();
-      setRooms(cached);
-      setSyncStatus("offline");
-    }
-  }, []);
-
-  useEffect(() => { loadFromServer(); }, [loadFromServer]);
-
-  const updateRooms = useCallback(async (newRooms: Room[]) => {
-    setRooms(newRooms);
-    saveRoomsToCache(newRooms);
-    setSyncStatus("syncing");
-    try {
-      await saveRoomsToServer(newRooms);
-      setSyncStatus("synced");
-      setTimeout(() => setSyncStatus("idle"), 3000);
-    } catch (err: any) {
-      setSyncStatus("error");
-      toast({ title: "Could not save to config file", description: err?.message || "Check that the server is running.", variant: "destructive" });
-    }
-  }, [toast]);
-
-  const handleAddRoom = (room: Room) => {
-    if (editingRoom) {
-      updateRooms(rooms.map((r) => (r.id === room.id ? room : r)));
-    } else {
-      updateRooms([...rooms, room]);
-    }
-    setShowAddDialog(false);
-    setEditingRoom(null);
-  };
-
-  const handleDeleteRoom = (id: string) => updateRooms(rooms.filter((r) => r.id !== id));
-
-  const handleToggleAdmin = () => {
-    if (adminMode) { setAdminMode(false); }
-    else { setShowPasswordDialog(true); }
-  };
-
-  if (activeRoom) {
-    return <ControlPanel room={activeRoom} onBack={() => setActiveRoom(null)} />;
-  }
-
-  return (
-    <>
-      <RoomList
-        rooms={rooms}
-        onSelectRoom={setActiveRoom}
-        onAddRoom={() => { setEditingRoom(null); setShowAddDialog(true); }}
-        onEditRoom={(room) => { setEditingRoom(room); setShowAddDialog(true); }}
-        onDeleteRoom={handleDeleteRoom}
-        adminMode={adminMode}
-        onToggleAdmin={handleToggleAdmin}
-        syncStatus={syncStatus}
-        onRefresh={loadFromServer}
-      />
-      {showPasswordDialog && (
-        <AdminPasswordDialog
-          onUnlock={() => { setAdminMode(true); setShowPasswordDialog(false); }}
-          onCancel={() => setShowPasswordDialog(false)}
-        />
-      )}
-      {showAddDialog && (
+      {showAddRoom && (
         <AddRoomDialog
           onAdd={handleAddRoom}
-          onCancel={() => { setShowAddDialog(false); setEditingRoom(null); }}
+          onCancel={() => { setShowAddRoom(false); setEditingRoom(null); }}
           editRoom={editingRoom}
         />
       )}
-    </>
+
+      {showUserMenu && (
+        <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
+      )}
+    </div>
   );
 }

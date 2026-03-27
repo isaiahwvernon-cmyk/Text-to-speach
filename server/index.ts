@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import os from "os";
+import { seedDefaultAdmin } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -77,6 +78,9 @@ app.use((req, res, next) => {
       if (net.family === "IPv4" && !net.internal) lanIP = net.address;
     }
   }
+
+  // Seed default admin user if no users exist
+  await seedDefaultAdmin();
 
   // Register API routes before Vite/static so they take priority
   await registerRoutes(httpServer, app, lanIP, port);

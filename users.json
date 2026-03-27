@@ -1,0 +1,22 @@
+[
+  {
+    "id": "mn9aacxu65df75c7",
+    "username": "admin",
+    "displayName": "Administrator",
+    "role": "admin",
+    "passwordHash": "$2b$10$a8Ue9sO3mhZ7bDdO6rzrf.SqBMt1VOzle0FpiNcc.3DsRFntzibDy",
+    "ttsEnabled": true,
+    "assignedRoomIds": [],
+    "presets": []
+  },
+  {
+    "id": "mn9aad024c8da2ab",
+    "username": "it",
+    "displayName": "IT Manager",
+    "role": "it",
+    "passwordHash": "$2b$10$n9QjKOaEsRLdJ8M8042tquI/QnmygYL6jB8TPNifoRVIN6Dcb9sDe",
+    "ttsEnabled": true,
+    "assignedRoomIds": [],
+    "presets": []
+  }
+]
