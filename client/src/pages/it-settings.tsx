@@ -276,7 +276,7 @@ export default function ItSettingsPage() {
                   <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>200ms (fast)</span><span>2000ms (slow)</span></div>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-700">
+                <div className="flex items-center justify-between gap-4 py-2 border-t border-slate-100 dark:border-slate-700">
                   <div>
                     <div className="text-sm font-medium text-slate-600 dark:text-slate-300">Default Chime Enabled</div>
                     <div className="text-xs text-slate-400">Play a chime before announcements (PG mode)</div>
@@ -285,7 +285,7 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-chime-default"
                     onClick={() => updateTts("chimeEnabled", !settings.tts.chimeEnabled)}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.tts.chimeEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
                   </button>
@@ -297,8 +297,8 @@ export default function ItSettingsPage() {
                       <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Default Post-Chime Delay</label>
                       <span className="text-sm font-bold text-[#FF8200]">{settings.tts.chimeDelayMs}ms</span>
                     </div>
-                    <input data-testid="input-default-chime-delay" type="range" min={300} max={3000} step={50} value={settings.tts.chimeDelayMs} onChange={(e) => updateTts("chimeDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" />
-                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>300ms</span><span>3000ms</span></div>
+                    <input data-testid="input-default-chime-delay" type="range" min={300} max={10000} step={50} value={settings.tts.chimeDelayMs} onChange={(e) => updateTts("chimeDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" />
+                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>300ms</span><span>10000ms</span></div>
                   </div>
                 )}
 

@@ -17,13 +17,21 @@ export const speakerSchema = z.object({
 });
 export type Speaker = z.infer<typeof speakerSchema>;
 
-export const roomSchema = z.object({
+// ─── Contact (unified paging target + volume control group) ──────────────────
+export const contactSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
-  speakers: z.array(speakerSchema).min(1),
+  mode: z.enum(["direct", "pg"]).default("direct"),
+  speakers: z.array(speakerSchema).default([]),
+  pgExtension: z.string().default(""),
+  codec: z.enum(["PCMU", "PCMA", "G722"]).optional(),
   syncMode: z.boolean().default(true),
 });
-export type Room = z.infer<typeof roomSchema>;
+export type Contact = z.infer<typeof contactSchema>;
+
+// Keep Room as alias for backward compatibility
+export const roomSchema = contactSchema;
+export type Room = Contact;
 
 export const volumeResponseSchema = z.object({
   volume: z.number(),
@@ -125,7 +133,7 @@ export const ttsSettingsSchema = z.object({
   defaultMode: ttsRoutingModeSchema.default("direct"),
   dtmfDelayMs: z.number().int().min(200).max(2000).default(600),
   chimeEnabled: z.boolean().default(false),
-  chimeDelayMs: z.number().int().min(300).max(3000).default(750),
+  chimeDelayMs: z.number().int().min(300).max(10000).default(750),
   voiceSpeed: z.number().min(0.5).max(2.0).default(1.0),
   voicePitch: z.number().min(0.5).max(2.0).default(1.0),
 });
@@ -148,13 +156,14 @@ export type SystemSettings = z.infer<typeof systemSettingsSchema>;
 // ─── TTS Send Request ─────────────────────────────────────────────────────────
 export const ttsSendSchema = z.object({
   text: z.string().min(1, "Text is required").max(2000),
-  mode: ttsRoutingModeSchema,
+  contactId: z.string().optional(),
+  mode: ttsRoutingModeSchema.optional(),
   targetAddress: z.string().optional(),
   pgExtension: z.string().optional(),
   codec: codecSchema,
   dtmfDelayMs: z.number().int().min(200).max(2000).optional(),
   chimeEnabled: z.boolean().optional(),
-  chimeDelayMs: z.number().int().min(300).max(3000).optional(),
+  chimeDelayMs: z.number().int().min(300).max(10000).optional(),
 });
 export type TtsSendPayload = z.infer<typeof ttsSendSchema>;
 

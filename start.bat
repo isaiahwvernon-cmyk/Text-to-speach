@@ -169,13 +169,13 @@ echo ==========================================
 echo.
 echo Starting server...
 echo.
-echo Open your browser to: http://localhost:5000
+echo Open your browser to: http://localhost:5000/qr
 echo.
 echo Press Ctrl+C to stop the server.
 echo ==========================================
 echo.
 
-start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000"
+start "" /B cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:5000/qr"
 
 node dist\index.cjs
 

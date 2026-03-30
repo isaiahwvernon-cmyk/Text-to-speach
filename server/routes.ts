@@ -1,8 +1,8 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import http, { type Server } from "http";
 import {
   speakerConnectionSchema,
-  roomSchema,
+  contactSchema,
   loginSchema,
   createUserSchema,
   updateUserSchema,
@@ -11,11 +11,12 @@ import {
   ttsPresetSchema,
 } from "@shared/schema";
 import { z } from "zod";
-import http from "http";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import bcrypt from "bcryptjs";
+import QRCode from "qrcode";
 import {
   getAllUsers,
   getUserByUsername,
@@ -47,11 +48,14 @@ function readRoomsConfig(): any[] {
     const parsed: any[] = JSON.parse(raw);
 
     const migrated = parsed.map((r: any) => {
+      // Migrate old flat structure
       if (r.ipAddress && !r.speakers) {
         return {
           id: r.id,
           name: r.name,
+          mode: "direct",
           syncMode: true,
+          pgExtension: "",
           speakers: [
             {
               id: makeId(),
@@ -63,7 +67,12 @@ function readRoomsConfig(): any[] {
           ],
         };
       }
-      return r;
+      // Ensure mode/pgExtension fields exist
+      return {
+        mode: "direct",
+        pgExtension: "",
+        ...r,
+      };
     });
 
     if (migrated.some((r: any, i: number) => r !== parsed[i])) {
@@ -78,6 +87,19 @@ function readRoomsConfig(): any[] {
 
 function writeRoomsConfig(rooms: any[]): void {
   fs.writeFileSync(ROOMS_CONFIG_PATH, JSON.stringify(rooms, null, 2), "utf-8");
+}
+
+function getNetworkUrl(): string {
+  const ifaces = os.networkInterfaces();
+  for (const [, addrs] of Object.entries(ifaces)) {
+    if (!addrs) continue;
+    for (const addr of addrs) {
+      if (addr.family === "IPv4" && !addr.internal) {
+        return `http://${addr.address}:5000`;
+      }
+    }
+  }
+  return "http://localhost:5000";
 }
 
 const volumeSetSchema = speakerConnectionSchema.extend({
@@ -98,153 +120,137 @@ function parseDigestChallenge(header: string): Record<string, string> {
   return result;
 }
 
-function createDigestHeader(
+function buildDigestAuth(
   method: string,
   uri: string,
   username: string,
   password: string,
-  challenge: Record<string, string>,
-  nc: number
+  realm: string,
+  nonce: string,
+  qop?: string,
+  nc?: string,
+  cnonce?: string,
+  opaque?: string
 ): string {
-  const realm = challenge.realm || "";
-  const nonce = challenge.nonce || "";
-  const qop = challenge.qop || "";
-  const opaque = challenge.opaque || "";
-  const cnonce = crypto.randomBytes(8).toString("hex");
-  const ncStr = nc.toString(16).padStart(8, "0");
-
   const ha1 = crypto.createHash("md5").update(`${username}:${realm}:${password}`).digest("hex");
   const ha2 = crypto.createHash("md5").update(`${method}:${uri}`).digest("hex");
-
   let response: string;
-  if (qop) {
-    response = crypto
-      .createHash("md5")
-      .update(`${ha1}:${nonce}:${ncStr}:${cnonce}:${qop.split(",")[0].trim()}:${ha2}`)
-      .digest("hex");
+  if (qop === "auth" && nc && cnonce) {
+    response = crypto.createHash("md5").update(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`).digest("hex");
   } else {
-    response = crypto
-      .createHash("md5")
-      .update(`${ha1}:${nonce}:${ha2}`)
-      .digest("hex");
+    response = crypto.createHash("md5").update(`${ha1}:${nonce}:${ha2}`).digest("hex");
   }
-
   let header = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
-  if (qop) {
-    header += `, qop=${qop.split(",")[0].trim()}, nc=${ncStr}, cnonce="${cnonce}"`;
-  }
-  if (opaque) {
-    header += `, opaque="${opaque}"`;
-  }
+  if (qop) header += `, qop=${qop}`;
+  if (nc) header += `, nc=${nc}`;
+  if (cnonce) header += `, cnonce="${cnonce}"`;
+  if (opaque) header += `, opaque="${opaque}"`;
   return header;
 }
 
-function makeRequest(
+async function makeRequest(
   ipAddress: string,
-  reqPath: string,
+  apiPath: string,
   username: string,
-  password: string,
-  timeout: number = 8000
-): Promise<any> {
+  password: string
+): Promise<{ status: number; response: any }> {
   return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
       hostname: ipAddress,
       port: 80,
-      path: reqPath,
+      path: apiPath,
       method: "GET",
-      timeout,
+      timeout: 5000,
     };
 
-    const req = http.request(options, (res) => {
-      if (res.statusCode === 401) {
-        const wwwAuth = res.headers["www-authenticate"];
-        if (!wwwAuth) {
-          reject(new Error("Authentication failed: no challenge received"));
-          return;
-        }
-
-        const challenge = parseDigestChallenge(wwwAuth);
-        const authHeader = createDigestHeader("GET", reqPath, username, password, challenge, 1);
-
-        const authReq = http.request(
-          { ...options, headers: { Authorization: authHeader } },
-          (authRes) => {
-            let body = "";
-            authRes.on("data", (chunk) => (body += chunk));
-            authRes.on("end", () => {
-              if (authRes.statusCode === 200) {
-                try {
-                  resolve(JSON.parse(body));
-                } catch {
-                  resolve(body);
-                }
-              } else if (authRes.statusCode === 401) {
-                reject(new Error("Invalid username or password"));
-              } else {
-                reject(new Error(`Speaker returned HTTP ${authRes.statusCode}`));
-              }
-            });
-          }
-        );
-        authReq.on("error", (err) => reject(new Error(`Connection failed: ${err.message}`)));
-        authReq.on("timeout", () => {
-          authReq.destroy();
-          reject(new Error("Request timed out"));
-        });
-        authReq.end();
-      } else if (res.statusCode === 200) {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch {
-            resolve(body);
-          }
-        });
-      } else {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          reject(new Error(`Speaker returned HTTP ${res.statusCode}`));
-        });
+    const doRequest = (authHeader?: string) => {
+      const reqOptions = { ...options };
+      if (authHeader) {
+        reqOptions.headers = { Authorization: authHeader };
       }
-    });
 
-    req.on("error", (err) => reject(new Error(`Connection failed: ${err.message}`)));
-    req.on("timeout", () => {
-      req.destroy();
-      reject(new Error("Cannot reach speaker — check the IP address and make sure this server is on the same network"));
-    });
-    req.end();
+      const req = http.request(reqOptions, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode === 401 && !authHeader) {
+            const wwwAuth = res.headers["www-authenticate"] || "";
+            if (wwwAuth.toLowerCase().startsWith("digest")) {
+              const params = parseDigestChallenge(wwwAuth);
+              const realm = params.realm || "";
+              const nonce = params.nonce || "";
+              const qop = params.qop;
+              const opaque = params.opaque;
+              const nc = "00000001";
+              const cnonce = crypto.randomBytes(8).toString("hex");
+              const uri = apiPath;
+              const digestHeader = buildDigestAuth(
+                "GET", uri, username, password, realm, nonce,
+                qop ? "auth" : undefined, qop ? nc : undefined, qop ? cnonce : undefined, opaque
+              );
+              doRequest(digestHeader);
+            } else {
+              const basic = Buffer.from(`${username}:${password}`).toString("base64");
+              doRequest(`Basic ${basic}`);
+            }
+          } else if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve({ status: res.statusCode!, response: JSON.parse(data) });
+            } catch {
+              resolve({ status: res.statusCode!, response: {} });
+            }
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+          }
+        });
+      });
+
+      req.on("error", (err) => reject(err));
+      req.on("timeout", () => { req.destroy(); reject(new Error("Connection timed out")); });
+      req.end();
+    };
+
+    doRequest();
   });
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express,
-  lanIP: string,
-  port: number
-): Promise<Server> {
-  // ── Server info ─────────────────────────────────────────────────────────────
-  app.get("/api/info", (_req, res) => {
-    res.json({ lanIP, port, url: `http://${lanIP}:${port}` });
-  });
+export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: string, _port?: number): Promise<Server> {
 
-  // ── System status ────────────────────────────────────────────────────────────
-  app.get("/api/system/status", (_req, res) => {
-    const tts = getTtsStatus();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SYSTEM STATUS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/system/status", requireAuth, (_req, res) => {
+    const ttsStatus = getTtsStatus();
     const settings = getSettings();
     const sipConfigured = !!(settings.sip.serverAddress && settings.sip.username);
-    const pgConfigured = !!settings.pg.address;
+    const pgConfigured = !!(settings.pg.address);
 
     res.json({
       server: "ok",
-      tts: tts.status,
-      ttsMessage: tts.message,
+      tts: ttsStatus,
       sip: sipConfigured ? "ok" : "unconfigured",
       pg: pgConfigured ? "ok" : "unconfigured",
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // QR CODE (public — no auth)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/qr", (_req, res) => {
+    const url = getNetworkUrl();
+    res.json({ url });
+  });
+
+  app.get("/api/qr/image", async (_req, res) => {
+    try {
+      const url = getNetworkUrl();
+      const svg = await QRCode.toString(url, { type: "svg", margin: 2, width: 300 });
+      res.type("image/svg+xml").send(svg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -254,25 +260,22 @@ export async function registerRoutes(
   app.post("/api/auth/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Username and password are required" });
+      return res.status(400).json({ error: "Invalid login data" });
     }
 
     const { username, password } = parsed.data;
     const user = getUserByUsername(username);
-
     if (!user) {
-      addLog("warn", `Failed login attempt for unknown user: ${username}`);
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      addLog("warn", `Failed login attempt for user: ${username}`);
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
     const token = signToken({ userId: user.id, username: user.username, role: user.role });
-    addLog("info", `User logged in: ${username}`, username);
+    addLog("info", `User logged in: ${user.username}`, user.username);
 
     const { passwordHash: _ph, ...safeUser } = user;
     res.json({ token, user: safeUser });
@@ -285,7 +288,7 @@ export async function registerRoutes(
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ROOM ROUTES
+  // CONTACTS / ROOMS ROUTES
   // ─────────────────────────────────────────────────────────────────────────────
 
   app.get("/api/rooms", requireAuth, (req, res) => {
@@ -294,7 +297,6 @@ export async function registerRoutes(
       const auth = (req as any).auth;
       const user = (req as any).user;
 
-      // Admin/IT see all rooms; normal users see only assigned rooms
       if (auth.role === "admin" || auth.role === "it") {
         return res.json(allRooms);
       }
@@ -304,26 +306,100 @@ export async function registerRoutes(
       );
       res.json(assigned);
     } catch {
-      res.status(500).json({ error: "Failed to read rooms config" });
+      res.status(500).json({ error: "Failed to read contacts config" });
+    }
+  });
+
+  // Alias for contacts
+  app.get("/api/contacts", requireAuth, (req, res) => {
+    try {
+      const allContacts = readRoomsConfig();
+      const auth = (req as any).auth;
+      const user = (req as any).user;
+
+      if (auth.role === "admin" || auth.role === "it") {
+        return res.json(allContacts);
+      }
+
+      const assigned = allContacts.filter((c: any) =>
+        user.assignedRoomIds.includes(c.id)
+      );
+      res.json(assigned);
+    } catch {
+      res.status(500).json({ error: "Failed to read contacts" });
     }
   });
 
   app.put("/api/rooms", requireAuth, requireRole("admin", "it"), (req, res) => {
-    const parsed = z.array(roomSchema).safeParse(req.body);
+    const parsed = z.array(contactSchema).safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid rooms data", details: parsed.error.issues });
+      return res.status(400).json({ error: "Invalid contacts data", details: parsed.error.issues });
     }
     try {
       writeRoomsConfig(parsed.data);
-      addLog("info", `Rooms config updated (${parsed.data.length} rooms)`, (req as any).auth.username);
+      addLog("info", `Contacts updated (${parsed.data.length} contacts)`, (req as any).auth.username);
       res.json({ ok: true, count: parsed.data.length });
     } catch (err: any) {
-      res.status(500).json({ error: "Failed to write rooms config", details: err?.message });
+      res.status(500).json({ error: "Failed to write contacts config", details: err?.message });
+    }
+  });
+
+  // Create a single contact
+  app.post("/api/contacts", requireAuth, requireRole("admin", "it"), (req, res) => {
+    const parsed = contactSchema.omit({ id: true }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid contact data", details: parsed.error.issues });
+    }
+    try {
+      const contacts = readRoomsConfig();
+      const newContact = { id: makeId(), ...parsed.data };
+      contacts.push(newContact);
+      writeRoomsConfig(contacts);
+      addLog("info", `Contact created: ${newContact.name}`, (req as any).auth.username);
+      res.status(201).json(newContact);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to create contact", details: err?.message });
+    }
+  });
+
+  // Update a single contact
+  app.put("/api/contacts/:id", requireAuth, requireRole("admin", "it"), (req, res) => {
+    const { id } = req.params;
+    const parsed = contactSchema.safeParse({ ...req.body, id });
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid contact data", details: parsed.error.issues });
+    }
+    try {
+      const contacts = readRoomsConfig();
+      const idx = contacts.findIndex((c: any) => c.id === id);
+      if (idx === -1) return res.status(404).json({ error: "Contact not found" });
+      contacts[idx] = parsed.data;
+      writeRoomsConfig(contacts);
+      addLog("info", `Contact updated: ${parsed.data.name}`, (req as any).auth.username);
+      res.json(parsed.data);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update contact", details: err?.message });
+    }
+  });
+
+  // Delete a single contact
+  app.delete("/api/contacts/:id", requireAuth, requireRole("admin", "it"), (req, res) => {
+    const { id } = req.params;
+    try {
+      const contacts = readRoomsConfig();
+      const contact = contacts.find((c: any) => c.id === id);
+      if (!contact) return res.status(404).json({ error: "Contact not found" });
+      const updated = contacts.filter((c: any) => c.id !== id);
+      writeRoomsConfig(updated);
+      addLog("info", `Contact deleted: ${contact.name}`, (req as any).auth.username);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete contact", details: err?.message });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SPEAKER CONTROL ROUTES (all require auth now)
+  // SPEAKER CONTROL ROUTES
   // ─────────────────────────────────────────────────────────────────────────────
 
   app.post("/api/speaker/status", requireAuth, async (req, res) => {
@@ -571,9 +647,92 @@ export async function registerRoutes(
       return res.status(400).json({ error: "Invalid TTS request", details: parsed.error.issues });
     }
 
+    const payload = parsed.data;
+
     try {
-      const result = await sendTtsAnnouncement(parsed.data, auth.username);
-      addLog("tts", `TTS announcement sent by ${auth.username}`, auth.username, parsed.data.text.slice(0, 100));
+      // If a contactId is provided, resolve it to TTS parameters
+      if (payload.contactId) {
+        const allContacts = readRoomsConfig();
+        const contact = allContacts.find((c: any) => c.id === payload.contactId);
+
+        if (!contact) {
+          return res.status(404).json({ error: "Contact not found" });
+        }
+
+        // Check user has access to this contact
+        if (auth.role !== "admin" && auth.role !== "it" && !user.assignedRoomIds.includes(contact.id)) {
+          return res.status(403).json({ error: "Contact not assigned to your account" });
+        }
+
+        const settings = getSettings();
+        const codec = contact.codec || payload.codec;
+
+        if (contact.mode === "pg") {
+          // PG mode: use global PG gateway + contact's extension
+          const targetAddress = settings.pg.address;
+          if (!targetAddress) {
+            return res.status(400).json({ error: "PG gateway address not configured in IT Settings" });
+          }
+          const pgExtension = contact.pgExtension || settings.pg.defaultExtension;
+          const ttsData = {
+            ...payload,
+            mode: "pg" as const,
+            targetAddress,
+            pgExtension,
+            codec,
+          };
+          const result = await sendTtsAnnouncement(ttsData, auth.username);
+          addLog("tts", `TTS via PG to "${contact.name}" by ${auth.username}`, auth.username, payload.text.slice(0, 100));
+          return res.json(result);
+        } else {
+          // Direct mode: send to all speakers
+          const speakers = contact.speakers || [];
+          if (speakers.length === 0) {
+            return res.status(400).json({ error: "Contact has no speakers configured" });
+          }
+
+          if (speakers.length === 1) {
+            const ttsData = {
+              ...payload,
+              mode: "direct" as const,
+              targetAddress: speakers[0].ipAddress,
+              codec,
+            };
+            const result = await sendTtsAnnouncement(ttsData, auth.username);
+            addLog("tts", `TTS direct to "${contact.name}" by ${auth.username}`, auth.username, payload.text.slice(0, 100));
+            return res.json(result);
+          }
+
+          // Multiple speakers: send in parallel, combine results
+          const results = await Promise.allSettled(
+            speakers.map((spk: any) =>
+              sendTtsAnnouncement(
+                { ...payload, mode: "direct" as const, targetAddress: spk.ipAddress, codec },
+                auth.username
+              )
+            )
+          );
+
+          const combinedSteps: any[] = [];
+          results.forEach((r, i) => {
+            const label = speakers[i].label || `Speaker ${i + 1}`;
+            if (r.status === "fulfilled") {
+              combinedSteps.push(
+                ...(r.value.steps || []).map((s: any) => ({ ...s, name: `[${label}] ${s.name}` }))
+              );
+            } else {
+              combinedSteps.push({ name: `[${label}] Send`, status: "error", detail: r.reason?.message || "Failed" });
+            }
+          });
+
+          addLog("tts", `TTS direct to "${contact.name}" (${speakers.length} speakers) by ${auth.username}`, auth.username, payload.text.slice(0, 100));
+          return res.json({ steps: combinedSteps, simulated: results.some((r) => r.status === "fulfilled" && (r.value as any).simulated) });
+        }
+      }
+
+      // Fallback: legacy mode (direct targetAddress provided)
+      const result = await sendTtsAnnouncement(payload, auth.username);
+      addLog("tts", `TTS announcement sent by ${auth.username}`, auth.username, payload.text.slice(0, 100));
       res.json(result);
     } catch (err: any) {
       addLog("error", `TTS announcement failed: ${err.message}`, auth.username);
@@ -587,7 +746,6 @@ export async function registerRoutes(
 
   app.get("/api/settings", requireAuth, requireRole("admin", "it"), (_req, res) => {
     const settings = getSettings();
-    // Mask SIP password in response for security
     const masked = {
       ...settings,
       sip: { ...settings.sip, password: settings.sip.password ? "••••••••" : "" },
@@ -605,7 +763,6 @@ export async function registerRoutes(
 
     const updated = parsed.data;
 
-    // Preserve masked SIP password if not changed
     if (updated.sip.password === "••••••••") {
       updated.sip.password = current.sip.password;
     }

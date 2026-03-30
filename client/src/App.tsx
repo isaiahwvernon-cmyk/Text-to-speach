@@ -9,6 +9,7 @@ import LoginPage from "@/pages/login";
 import AdminPage from "@/pages/admin";
 import ItSettingsPage from "@/pages/it-settings";
 import ConnectPage from "@/pages/connect";
+import QrPage from "@/pages/qr";
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ component: Component, roles }: {
@@ -49,6 +50,7 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
 function Router() {
   return (
     <Switch>
+      <Route path="/qr" component={QrPage} />
       <Route path="/login">
         <PublicRoute component={LoginPage} />
       </Route>
