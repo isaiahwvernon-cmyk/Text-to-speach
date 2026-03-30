@@ -5,7 +5,7 @@ import {
   AlertCircle, ArrowLeft, Trash2, PlusCircle, Pencil, X, Search, RefreshCw,
   CloudOff, Mic, Send, Radio, Settings, Users, ChevronDown, ChevronUp,
   Bookmark, LogOut, CheckCircle2, AlertTriangle, Wifi, WifiOff, Loader2,
-  Bell, BellOff, Zap, Globe, Hash,
+  Bell, BellOff, Zap, Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -361,6 +361,8 @@ function RoomPanel({ room, onEdit, onDelete, isAdmin }: {
   );
 }
 
+type ResultStep = { name: string; status: "ok" | "warning" | "error" | "skipped"; detail: string };
+
 // ─── TTS Panel ────────────────────────────────────────────────────────────────
 function TtsPanel() {
   const { user, refreshUser } = useAuth();
@@ -368,13 +370,12 @@ function TtsPanel() {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<TtsRoutingMode>("direct");
   const [targetAddress, setTargetAddress] = useState("");
-  const [pgExtension, setPgExtension] = useState("");
   const [codec, setCodec] = useState<Codec>("PCMU");
   const [dtmfDelay, setDtmfDelay] = useState(600);
   const [chimeEnabled, setChimeEnabled] = useState(false);
   const [chimeDelay, setChimeDelay] = useState(750);
   const [sending, setSending] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [lastResult, setLastResult] = useState<{ steps: ResultStep[]; simulated?: boolean } | null>(null);
 
   const [presets, setPresets] = useState<TtsPreset[]>(user?.presets || []);
   const [addingPreset, setAddingPreset] = useState(false);
@@ -389,11 +390,12 @@ function TtsPanel() {
     const finalText = presetText ?? text;
     if (!finalText.trim()) return;
     if (!targetAddress.trim()) {
-      toast({ title: "Target required", description: "Enter a speaker IP or PG address", variant: "destructive" });
+      toast({ title: "Target required", description: mode === "direct" ? "Enter the speaker IP address" : "Enter the PG gateway IP address", variant: "destructive" });
       return;
     }
 
     setSending(true);
+    setLastResult(null);
     try {
       const res = await apiFetch("/api/tts/send", {
         method: "POST",
@@ -401,7 +403,6 @@ function TtsPanel() {
           text: finalText.trim(),
           mode,
           targetAddress: targetAddress.trim(),
-          pgExtension: mode === "pg" ? pgExtension.trim() : undefined,
           codec,
           dtmfDelayMs: mode === "pg" ? dtmfDelay : undefined,
           chimeEnabled: mode === "pg" ? chimeEnabled : undefined,
@@ -415,12 +416,7 @@ function TtsPanel() {
         return;
       }
 
-      toast({
-        title: data.simulated ? "Simulated (TTS not installed)" : "Announcement sent",
-        description: data.simulated
-          ? "Kokoro TTS not installed — see IT Settings for setup instructions."
-          : "Your message was transmitted.",
-      });
+      setLastResult({ steps: data.steps || [], simulated: data.simulated });
       if (!presetText) setText("");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -506,8 +502,8 @@ function TtsPanel() {
           <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Routing Mode</label>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { value: "direct", label: "Direct SIP", icon: Wifi, desc: "Peer-to-peer to speaker" },
-              { value: "pg", label: "PG Gateway", icon: Radio, desc: "Via IP-A1PG multicast" },
+              { value: "direct", label: "Direct SIP", icon: Wifi, desc: "Send to speaker IP" },
+              { value: "pg", label: "PG Gateway", icon: Radio, desc: "Send via IP-A1PG" },
             ].map(({ value, label, icon: Icon, desc }) => (
               <button
                 key={value}
@@ -528,32 +524,19 @@ function TtsPanel() {
         </div>
 
         {/* Target address */}
-        <div className="grid grid-cols-1 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">
-              {mode === "direct" ? "Speaker IP Address" : "PG Server Address"}
-            </label>
-            <input
-              data-testid="input-target-address"
-              value={targetAddress}
-              onChange={(e) => setTargetAddress(e.target.value)}
-              placeholder={mode === "direct" ? "192.168.1.100" : "192.168.1.50"}
-              className={INPUT_CLS}
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">
+            {mode === "direct" ? "Speaker IP Address" : "PG Gateway IP Address"}
+          </label>
+          <input
+            data-testid="input-target-address"
+            value={targetAddress}
+            onChange={(e) => setTargetAddress(e.target.value)}
+            placeholder={mode === "direct" ? "192.168.1.100" : "192.168.1.50"}
+            className={INPUT_CLS}
+          />
           {mode === "pg" && (
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">
-                <Hash className="w-3.5 h-3.5 inline mr-1" />Zone Extension / DTMF
-              </label>
-              <input
-                data-testid="input-pg-extension"
-                value={pgExtension}
-                onChange={(e) => setPgExtension(e.target.value)}
-                placeholder="e.g., 1 for Zone 1"
-                className={INPUT_CLS}
-              />
-            </div>
+            <p className="text-xs text-slate-400 mt-1.5">Extension / zone number is configured in IT Settings → PG Gateway</p>
           )}
         </div>
 
@@ -643,9 +626,37 @@ function TtsPanel() {
           className="w-full bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl py-3 text-base font-semibold shadow-md shadow-orange-100"
         >
           {sending
-            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending…</>
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating &amp; sending…</>
             : <><Send className="w-4 h-4 mr-2" />Send Announcement</>}
         </Button>
+
+        {/* Step-by-step result panel */}
+        {lastResult && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-600 overflow-hidden" data-testid="tts-result-panel">
+            <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-600 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Announcement Result</span>
+              <button onClick={() => setLastResult(null)} className="text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+              {lastResult.steps.map((step, i) => {
+                const icon =
+                  step.status === "ok" ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" /> :
+                  step.status === "warning" ? <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" /> :
+                  step.status === "error" ? <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> :
+                  <span className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0 inline-block" />;
+                return (
+                  <div key={i} className="flex items-start gap-3 px-4 py-3">
+                    <div className="mt-0.5">{icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{step.name}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{step.detail}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Presets */}
         <div className="border-t border-slate-100 dark:border-slate-700 pt-4">

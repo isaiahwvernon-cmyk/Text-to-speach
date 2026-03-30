@@ -181,96 +181,115 @@ async function generateSpeech(
  *   send DTMF extension → wait dtmfDelayMs → [optional chime + chimeDelayMs] →
  *   stream audio → PG routes to multicast channel
  */
+export type AnnouncementStep = {
+  name: string;
+  status: "ok" | "warning" | "error" | "skipped";
+  detail: string;
+};
+
 export async function sendTtsAnnouncement(
   payload: TtsSendPayload,
   username: string
-): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+): Promise<{ success: boolean; steps: AnnouncementStep[]; simulated?: boolean }> {
   const settings = getSettings();
-
   const dtmfDelay = payload.dtmfDelayMs ?? settings.tts.dtmfDelayMs;
   const chimeEnabled = payload.chimeEnabled ?? settings.tts.chimeEnabled;
   const chimeDelay = payload.chimeDelayMs ?? settings.tts.chimeDelayMs;
 
   if (payload.mode === "direct" && !payload.targetAddress) {
-    throw new Error("Direct mode requires a target speaker address");
+    throw new Error("Direct mode requires a target speaker IP address");
   }
   if (payload.mode === "pg" && !payload.targetAddress) {
-    throw new Error("PG mode requires the PG server address");
+    throw new Error("PG mode requires the PG gateway IP address");
   }
 
-  const workflowSteps: string[] = [];
-  workflowSteps.push(`User: ${username}`);
-  workflowSteps.push(`Text: "${payload.text}"`);
-  workflowSteps.push(`Mode: ${payload.mode === "pg" ? "PG Gateway" : "Direct SIP"}`);
-  workflowSteps.push(`Codec: ${payload.codec}`);
-  workflowSteps.push(`Target: ${payload.targetAddress}`);
+  const steps: AnnouncementStep[] = [];
 
-  if (payload.mode === "pg") {
-    workflowSteps.push(`Extension: ${payload.pgExtension || "(default)"}`);
-    workflowSteps.push(`DTMF delay: ${dtmfDelay}ms`);
-    if (chimeEnabled) {
-      workflowSteps.push(`Chime: enabled (${chimeDelay}ms delay)`);
-    }
+  // ── Step 1: TTS Engine ───────────────────────────────────────────────────
+  if (ttsStatus !== "ok") {
+    steps.push({
+      name: "TTS Generation",
+      status: "error",
+      detail: ttsStatusMessage,
+    });
+    steps.push({
+      name: "Audio Delivery",
+      status: "skipped",
+      detail: "Skipped — TTS engine not ready",
+    });
+    return { success: true, simulated: true, steps };
   }
 
-  if (ttsStatus === "ok") {
-    const tmpDir = path.join(process.cwd(), "tmp");
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = path.join(process.cwd(), "tmp");
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const wavPath = path.join(tmpDir, `tts_${Date.now()}.wav`);
 
-    const wavPath = path.join(tmpDir, `tts_${Date.now()}.wav`);
+  const ttsStart = Date.now();
+  try {
+    await generateSpeech(payload.text, wavPath);
+    const elapsed = ((Date.now() - ttsStart) / 1000).toFixed(1);
 
+    // Get duration of generated audio
+    let durationStr = "";
     try {
-      await generateSpeech(payload.text, wavPath);
-      workflowSteps.push("TTS: Generated with Kokoro");
-      workflowSteps.push("SIP: [requires network SIP setup]");
+      const stat = fs.statSync(wavPath);
+      // WAV PCM 24kHz mono: bytes = (size - 44) / (24000 * 2)
+      const secs = (stat.size - 44) / (24000 * 2);
+      if (secs > 0) durationStr = ` (${secs.toFixed(1)}s audio)`;
+    } catch {}
 
-      try { fs.unlinkSync(wavPath); } catch {}
-
-      return {
-        success: true,
-        message: `Announcement queued. ${workflowSteps.join(" | ")}`,
-      };
-    } catch (err: any) {
-      throw new Error(`TTS generation failed: ${err.message}`);
-    }
+    steps.push({
+      name: "TTS Generation",
+      status: "ok",
+      detail: `Kokoro generated${durationStr} in ${elapsed}s — codec: ${payload.codec}`,
+    });
+  } catch (err: any) {
+    steps.push({
+      name: "TTS Generation",
+      status: "error",
+      detail: err.message || "Kokoro script failed",
+    });
+    steps.push({
+      name: "Audio Delivery",
+      status: "skipped",
+      detail: "Skipped — TTS generation failed",
+    });
+    try { fs.unlinkSync(wavPath); } catch {}
+    throw new Error(`TTS generation failed: ${err.message}`);
   }
 
-  return {
-    success: true,
-    simulated: true,
-    message: buildSimulatedMessage(payload, username, dtmfDelay, chimeEnabled, chimeDelay),
-  };
-}
-
-function buildSimulatedMessage(
-  payload: TtsSendPayload,
-  username: string,
-  dtmfDelay: number,
-  chimeEnabled: boolean,
-  chimeDelay: number
-): string {
-  const codec = payload.codec;
-  const mode = payload.mode;
-
-  if (mode === "direct") {
-    return (
-      `[SIMULATED] Direct SIP Announcement by ${username}\n` +
-      `Text: "${payload.text}"\n` +
-      `Flow: Kokoro TTS → PCM → ${codec} transcode → SIP/RTP → ${payload.targetAddress}\n` +
-      `Status: Kokoro TTS engine not installed. ` +
-      `Install Python + kokoro to enable real audio.`
-    );
+  // ── Step 2: Audio Delivery ───────────────────────────────────────────────
+  // WAV is ready at wavPath. Actual SIP/RTP transmission requires a SIP stack.
+  // We describe exactly what would happen and what is pending.
+  if (payload.mode === "direct") {
+    steps.push({
+      name: "Audio Delivery",
+      status: "warning",
+      detail:
+        `Target: ${payload.targetAddress} | ` +
+        `Flow: WAV → ${payload.codec} → SIP/RTP → speaker | ` +
+        `SIP stack not yet wired — audio generated but not transmitted`,
+    });
+  } else {
+    const ext = payload.pgExtension || settings.pg?.defaultExtension || "(no extension)";
+    steps.push({
+      name: "Audio Delivery",
+      status: "warning",
+      detail:
+        `Target: ${payload.targetAddress} | ` +
+        `Extension: ${ext} | DTMF delay: ${dtmfDelay}ms | ` +
+        (chimeEnabled ? `Chime: ${chimeDelay}ms | ` : "") +
+        `Flow: WAV → ${payload.codec} → SIP → PG → multicast | ` +
+        `SIP stack not yet wired — audio generated but not transmitted`,
+    });
   }
 
-  const ext = payload.pgExtension ? ` → DTMF "${payload.pgExtension}"` : "";
-  const chimeStr = chimeEnabled ? ` → Chime → wait ${chimeDelay}ms` : "";
+  try { fs.unlinkSync(wavPath); } catch {}
 
-  return (
-    `[SIMULATED] PG Zone Announcement by ${username}\n` +
-    `Text: "${payload.text}"\n` +
-    `Flow: Kokoro TTS → PCM → ${codec} transcode → SIP → ${payload.targetAddress}` +
-    `${ext} → wait ${dtmfDelay}ms${chimeStr} → RTP stream → PG multicast\n` +
-    `Status: Kokoro TTS engine not installed. ` +
-    `Install Python + kokoro to enable real audio.`
+  console.log(
+    `[TTS] Announcement by ${username}: "${payload.text.slice(0, 50)}${payload.text.length > 50 ? "…" : ""}" | ` +
+    `mode=${payload.mode} target=${payload.targetAddress} codec=${payload.codec}`
   );
+
+  return { success: true, steps };
 }

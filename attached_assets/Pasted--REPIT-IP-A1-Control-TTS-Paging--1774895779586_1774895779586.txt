@@ -1,0 +1,108 @@
+==========================================
+  REPIT -- IP-A1 Control + TTS Paging
+==========================================
+
+Node.js version: v24.14.0
+
+Checking TTS engine (Kokoro)...
+
+Python found: Python 3.12.0
+[TTS] Kokoro TTS: already installed -- OK
+
+Building REPIT... this takes about 30 seconds.
+
+building client...
+vite v7.3.0 building client environment for production...
+transforming (4) src\App.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1671 modules transformed.
+../dist/public/index.html                   1.50 kB │ gzip:   0.64 kB
+../dist/public/assets/index-BwCXo2oy.css   82.62 kB │ gzip:  13.27 kB
+../dist/public/assets/index-DxYtRAoS.js   363.12 kB │ gzip: 111.95 kB
+✓ built in 5.35s
+building server...
+
+  dist\index.cjs  949.5kb
+
+Done in 389ms
+
+Build complete!
+
+==========================================
+  Default login credentials:
+    Admin:  admin  / admin
+    IT:     it     / it1234
+  (Change these after first login via Admin panel)
+==========================================
+
+Starting server...
+
+Open your browser to: http://localhost:5000
+
+Press Ctrl+C to stop the server.
+==========================================
+
+[TTS] Python resolved to: C:\Users\ivernon\AppData\Local\Programs\Python\Python312\python.exe
+
+==========================================
+ IP-A1 Volume Controller
+==========================================
+
+Local:   http://localhost:5000
+Network: http://172.16.1.92:5000
+
+[TTS] Kokoro ready (Python: C:\Users\ivernon\AppData\Local\Programs\Python\Python312\python.exe)
+2:22:56 PM [express] GET /api/auth/me 401 in 27ms :: {"error":"Invalid or expired token"}
+2:23:06 PM [express] POST /api/auth/login 200 in 470ms :: {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJtbjlhYWQwMjRjOGRhMmFiIiwidXNlcm5hbWUiOiJpdCIsInJvbGUiOiJpdCIsImlhdCI6MTc3NDg5NDk4NiwiZXhwIjoxNzc0OTgxMzg2fQ.o_nxNCm6OY-JxW1ev38oz3ACed6pg9laX62jBsulgLQ","user":{"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}}
+2:23:06 PM [express] GET /api/system/status 304 in 4ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:23:06 PM [express] GET /api/rooms 304 in 10ms :: []
+2:23:36 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:23:37 PM [express] PUT /api/rooms 200 in 250ms :: {"ok":true,"count":1}
+2:23:38 PM [express] POST /api/speaker/status 200 in 277ms :: {"volume":15,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:24:07 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:24:08 PM [express] POST /api/speaker/status 200 in 138ms :: {"volume":15,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:24:37 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:24:37 PM [express] POST /api/speaker/status 200 in 144ms :: {"volume":15,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:24:42 PM [express] POST /api/speaker/volume/set 200 in 310ms :: {"volume":31}
+2:24:43 PM [express] POST /api/speaker/status 200 in 232ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:24:46 PM [express] POST /api/speaker/volume/set 200 in 144ms :: {"volume":24}
+2:24:46 PM [express] POST /api/speaker/status 200 in 230ms :: {"volume":24,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:25:06 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:25:07 PM [express] POST /api/speaker/status 200 in 248ms :: {"volume":24,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:25:10 PM [express] POST /api/speaker/volume/set 200 in 147ms :: {"volume":15}
+2:25:10 PM [express] POST /api/speaker/status 200 in 243ms :: {"volume":15,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:25:36 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:25:37 PM [express] POST /api/speaker/status 200 in 136ms :: {"volume":15,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:25:45 PM [express] POST /api/speaker/volume/set 200 in 142ms :: {"volume":31}
+2:25:45 PM [express] POST /api/speaker/status 200 in 244ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:26:06 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:26:07 PM [express] POST /api/speaker/status 200 in 153ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:26:15 PM [express] POST /api/tts/send 200 in 61247ms :: {"success":true,"message":"Announcement queued. User: it | Text: \"“Paging all humans. The coffee machine is low on beans. Please respond immediately. This is not a drill.”\" | Mode: Direct SIP | Codec: PCMU | Target: 192.168.14.3 | TTS: Generated with Kokoro | SIP: [requires network SIP setup]"}
+2:26:36 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:26:37 PM [express] POST /api/speaker/status 200 in 134ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:27:07 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:27:08 PM [express] POST /api/speaker/status 200 in 133ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:27:36 PM [express] GET /api/system/status 304 in 0ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:27:37 PM [express] POST /api/speaker/status 200 in 154ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:27:37 PM [express] GET /api/settings 304 in 5ms :: {"sip":{"serverAddress":"","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"PCMU","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+2:27:37 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:27:37 PM [express] GET /api/logs 200 in 33ms :: [{"id":"mndire7134820ad6","timestamp":"2026-03-30T18:26:15.326Z","level":"tts","message":"TTS announcement sent by it","user":"it","details":"“Paging all humans. The coffee machine is low on beans. Please respond immediately. This is not a dr"},{"id":"mndio0fc3810a8f9","timestamp":"2026-03-30T18:23:37.512Z","level":"info","message":"Rooms config updated (1 rooms)","user":"it"},{"id":"mndincgk99f7ee9d","timestamp":"2026-03-30T18:23:06.453Z","level":"info","message":"User logged in: it","user":"it"},{"id":"mn9gcoiy0300a93d","timestamp":"2026-03-27T22:07:44.938Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9gbokx7dbf9597","timestamp":"2026-03-27T22:06:58.354Z","level":"tts","message":"TTS announcement sent by it","user":"it","details":"hi"},{"id":"mn9ba0ndf3679ece","timestamp":"2026-03-27T19:45:42.601Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad74naba59a22","timestamp":"2026-03-27T19:20:11.351Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9ad2zt6e7fb227","timestamp":"2026-03-27T19:20:05.993Z","level":"info","message":"User logged in: admin","user":"admin"},{"id":"mn9acycpd6653e4e","timestamp":"2026-03-27T19:19:59.977Z","level":"info","message":"User logged in: admin","user":"admin"}]
+2:28:43 PM [express] PUT /api/settings 200 in 31ms :: {"sip":{"serverAddress":"192.168.14.3","serverPort":5060,"username":"","password":"","fromExtension":"","realm":""},"pg":{"address":"","port":5060,"defaultExtension":""},"tts":{"defaultCodec":"G722","defaultMode":"direct","dtmfDelayMs":600,"chimeEnabled":false,"chimeDelayMs":750,"voiceSpeed":1,"voicePitch":1},"logging":{"enabled":true,"retainDays":30}}
+2:31:51 PM [express] GET /api/rooms 200 in 4ms :: [{"id":"mndio0bkourts","name":"Isaiah Room 1","speakers":[{"id":"mndinmh67s0s1","label":"Speaker 1","ipAddress":"192.168.14.3","username":"admin","password":"guest"}],"syncMode":true}]
+2:31:52 PM [express] GET /api/system/status 304 in 3ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:31:52 PM [express] POST /api/speaker/status 200 in 165ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:32:21 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:32:22 PM [express] POST /api/speaker/status 200 in 190ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:32:51 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:32:51 PM [express] POST /api/speaker/status 200 in 143ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:33:21 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:33:21 PM [express] POST /api/speaker/status 200 in 153ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:33:51 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:33:50 PM [express] POST /api/speaker/status 200 in -527ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:34:12 PM [express] POST /api/tts/send 200 in 100661ms :: {"success":true,"message":"Announcement queued. User: it | Text: \"“Paging all humans. The coffee machine is low on beans. Please respond immediately. This is not a drill.”\" | Mode: Direct SIP | Codec: G722 | Target: 192.168.14.3 | TTS: Generated with Kokoro | SIP: [requires network SIP setup]"}
+2:34:20 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:34:20 PM [express] POST /api/speaker/status 200 in 201ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:34:50 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:34:50 PM [express] POST /api/speaker/status 200 in 135ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
+2:35:20 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":"ok","ttsMessage":"Kokoro TTS engine ready","sip":"unconfigured","pg":"unconfigured"}
+2:35:20 PM [express] POST /api/speaker/status 200 in 130ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","modelName":"IP-A1PC238","terminalName":"IP-A1PC238","connected":true}
