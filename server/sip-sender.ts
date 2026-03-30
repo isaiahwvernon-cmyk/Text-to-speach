@@ -104,7 +104,7 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     targetPort = 5060,
     wavFile,
     codec,
-    chimeDelayMs = 500,
+    chimeDelayMs = 1200,
     dtmfDigits,
     dtmfDelayMs = 500,
     ffmpegCmd = "ffmpeg",
@@ -129,6 +129,7 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     "t=0 0\r\n" +
     `m=audio ${localRtpPort} RTP/AVP ${codecInfo.pt}\r\n` +
     `a=rtpmap:${codecInfo.pt} ${codecInfo.name}/${codecInfo.sipRate}\r\n` +
+    "a=ptime:20\r\n" +
     "a=sendonly\r\n";
 
   // ── Build a SIP message ──────────────────────────────────────────────────
@@ -164,6 +165,7 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     return new Promise((resolve) => {
       const args = [
         "-y",
+        "-re",           // read input at real-time rate — critical for RTP pacing
         "-i", wavFile,
         "-ar", codecInfo.ffRate,
         "-ac", "1",
@@ -172,13 +174,31 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
         `rtp://${destIp}:${destPort}`,
       ];
 
+      console.log(`[SIP] ffmpeg stream: ${ffmpegCmd} ${args.join(" ")}`);
+
       let stderr = "";
       const proc = spawn(ffmpegCmd, args, { stdio: ["ignore", "ignore", "pipe"] });
-      proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
-      proc.on("close", (code) => {
-        resolve(code === 0 ? null : `ffmpeg exited with code ${code}: ${stderr.slice(-300)}`);
+      proc.stderr.on("data", (d: Buffer) => {
+        const chunk = d.toString();
+        stderr += chunk;
+        // Log progress lines (size= ... time= ...) so operator can see streaming
+        if (chunk.includes("time=") || chunk.includes("Error") || chunk.includes("error")) {
+          process.stdout.write(`[SIP/ffmpeg] ${chunk}`);
+        }
       });
-      proc.on("error", (err) => resolve(`ffmpeg error: ${err.message}`));
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`[SIP] ffmpeg exited ${code}: ${stderr.slice(-400)}`);
+          resolve(`ffmpeg exited with code ${code}: ${stderr.slice(-300)}`);
+        } else {
+          console.log(`[SIP] ffmpeg finished — audio delivered to ${destIp}:${destPort}`);
+          resolve(null);
+        }
+      });
+      proc.on("error", (err) => {
+        console.error(`[SIP] ffmpeg spawn error: ${err.message}`);
+        resolve(`ffmpeg error: ${err.message}`);
+      });
     });
   }
 
@@ -204,10 +224,10 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
       });
     };
 
-    // Overall timeout — 30 s gives ffmpeg time to stream longer messages
+    // Overall timeout — 60 s covers TTS + chime + audio streaming
     const globalTimeout = setTimeout(() => {
-      finish(false, `SIP session timed out after 30s — speaker at ${targetIp} did not complete the call`);
-    }, 30000);
+      finish(false, `SIP session timed out after 60s — speaker at ${targetIp} did not respond or complete`);
+    }, 60000);
 
     socket.bind(0, () => {
       localSipPort = (socket.address() as dgram.AddressInfo).port;
@@ -224,10 +244,15 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
       // 1xx provisional — ignore, keep waiting
       if (/^SIP\/2\.0 1\d\d/.test(text)) return;
 
-      // 200 OK to INVITE
-      if (/^SIP\/2\.0 200/.test(text) && text.includes("CSeq:") && /\bINVITE\b/.test(text)) {
+      // 200 OK to INVITE (CSeq header is case-insensitive in SIP)
+      if (/^SIP\/2\.0 200/.test(text) && /cseq:/i.test(text) && /\bINVITE\b/i.test(text)) {
         toTag = parseToTag(text);
         const remoteRtpPort = parseSdpPort(text);
+
+        console.log(`[SIP] 200 OK from ${targetIp} | RTP port: ${remoteRtpPort ?? "not found"} | codec: ${codec}`);
+        // Log the SDP section for debugging
+        const sdpSection = text.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
+        if (sdpSection) console.log(`[SIP] Speaker SDP:\n${sdpSection}`);
 
         // ACK (CSeq stays at 1 for INVITE dialog)
         const ackMsg = buildRequest("ACK", toTag);

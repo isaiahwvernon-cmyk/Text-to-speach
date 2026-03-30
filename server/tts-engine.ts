@@ -267,7 +267,7 @@ export async function sendTtsAnnouncement(
         targetIp: payload.targetAddress,
         wavFile: wavPath,
         codec: payload.codec as CodecName,
-        chimeDelayMs: chimeEnabled ? chimeDelay : 300,
+        chimeDelayMs: chimeEnabled ? chimeDelay : 1200,
       });
     } else {
       // PG mode — send DTMF extension digits after the call is up
