@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { getSettings } from "./db.js";
 import type { TtsSendPayload } from "@shared/schema";
+import { sendViaSip, type CodecName } from "./sip-sender.js";
 
 export type TtsStatus = "ok" | "unavailable" | "checking";
 
@@ -258,33 +259,43 @@ export async function sendTtsAnnouncement(
     throw new Error(`TTS generation failed: ${err.message}`);
   }
 
-  // ── Step 2: Audio Delivery ───────────────────────────────────────────────
-  // WAV is ready at wavPath. Actual SIP/RTP transmission requires a SIP stack.
-  // We describe exactly what would happen and what is pending.
-  if (payload.mode === "direct") {
-    steps.push({
-      name: "Audio Delivery",
-      status: "warning",
-      detail:
-        `Target: ${payload.targetAddress} | ` +
-        `Flow: WAV → ${payload.codec} → SIP/RTP → speaker | ` +
-        `SIP stack not yet wired — audio generated but not transmitted`,
-    });
-  } else {
-    const ext = payload.pgExtension || settings.pg?.defaultExtension || "(no extension)";
-    steps.push({
-      name: "Audio Delivery",
-      status: "warning",
-      detail:
-        `Target: ${payload.targetAddress} | ` +
-        `Extension: ${ext} | DTMF delay: ${dtmfDelay}ms | ` +
-        (chimeEnabled ? `Chime: ${chimeDelay}ms | ` : "") +
-        `Flow: WAV → ${payload.codec} → SIP → PG → multicast | ` +
-        `SIP stack not yet wired — audio generated but not transmitted`,
-    });
-  }
+  // ── Step 2: Audio Delivery via SIP/RTP ──────────────────────────────────
+  try {
+    let sipResult;
+    if (payload.mode === "direct") {
+      sipResult = await sendViaSip({
+        targetIp: payload.targetAddress,
+        wavFile: wavPath,
+        codec: payload.codec as CodecName,
+        chimeDelayMs: chimeEnabled ? chimeDelay : 300,
+      });
+    } else {
+      // PG mode — send DTMF extension digits after the call is up
+      const ext = payload.pgExtension || settings.pg?.defaultExtension || "";
+      sipResult = await sendViaSip({
+        targetIp: payload.targetAddress,
+        wavFile: wavPath,
+        codec: payload.codec as CodecName,
+        dtmfDigits: ext,
+        dtmfDelayMs: dtmfDelay,
+        chimeDelayMs: chimeEnabled ? chimeDelay : 0,
+      });
+    }
 
-  try { fs.unlinkSync(wavPath); } catch {}
+    steps.push({
+      name: "Audio Delivery",
+      status: sipResult.success ? "ok" : "error",
+      detail: sipResult.detail,
+    });
+  } catch (err: any) {
+    steps.push({
+      name: "Audio Delivery",
+      status: "error",
+      detail: `SIP delivery error: ${err.message}`,
+    });
+  } finally {
+    try { fs.unlinkSync(wavPath); } catch {}
+  }
 
   console.log(
     `[TTS] Announcement by ${username}: "${payload.text.slice(0, 50)}${payload.text.length > 50 ? "…" : ""}" | ` +
