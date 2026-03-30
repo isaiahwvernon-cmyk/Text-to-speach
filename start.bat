@@ -46,7 +46,6 @@ if %errorlevel% equ 0 (
 )
 
 :: Try 'python' but confirm it is a real install, not the Windows Store stub
-:: The store stub prints nothing useful and exits non-zero
 for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PYCHECK=%%v
 echo %PYCHECK% | findstr /C:"Python 3" >nul 2>nul
 if %errorlevel% equ 0 (
@@ -70,7 +69,7 @@ echo [TTS]   - Or disable the Windows Store stub in:
 echo [TTS]     Settings ^> Apps ^> Advanced app settings ^> App execution aliases
 echo [TTS] REPIT will run in simulation mode without Python.
 echo.
-goto :BUILD
+goto :CHECK_FFMPEG
 
 :: ── Check / install Kokoro ────────────────────────────────────────────────────
 :CHECK_KOKORO
@@ -81,7 +80,7 @@ echo Python found: %PYVER%
 if %errorlevel% equ 0 (
     echo [TTS] Kokoro TTS: already installed -- OK
     echo.
-    goto :BUILD
+    goto :CHECK_FFMPEG
 )
 
 echo [TTS] Installing Kokoro TTS and dependencies...
@@ -96,6 +95,48 @@ if %errorlevel% neq 0 (
 ) else (
     echo.
     echo [TTS] Kokoro TTS installed successfully!
+    echo.
+)
+
+:: ── Check / install ffmpeg ────────────────────────────────────────────────────
+:CHECK_FFMPEG
+echo Checking audio streaming (ffmpeg)...
+echo.
+
+where ffmpeg >nul 2>nul
+if %errorlevel% equ 0 (
+    for /f "tokens=3" %%v in ('ffmpeg -version 2^>^&1 ^| findstr /C:"ffmpeg version"') do (
+        echo [AUDIO] ffmpeg %%v -- OK
+    )
+    echo.
+    goto :BUILD
+)
+
+:: ffmpeg not found — try winget (built into Windows 10/11)
+echo [AUDIO] ffmpeg not found. Attempting install via Windows Package Manager...
+echo.
+
+where winget >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [AUDIO] WARNING: winget not available. Cannot auto-install ffmpeg.
+    echo [AUDIO] Install ffmpeg manually from: https://ffmpeg.org/download.html
+    echo [AUDIO]   - Download a Windows build, extract it, and add the bin folder to PATH
+    echo [AUDIO] Audio delivery will not work until ffmpeg is installed.
+    echo.
+    goto :BUILD
+)
+
+winget install --id=Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
+if %errorlevel% equ 0 (
+    echo.
+    echo [AUDIO] ffmpeg installed successfully!
+    echo [AUDIO] NOTE: You may need to restart this script once for PATH to update.
+    echo.
+) else (
+    echo.
+    echo [AUDIO] WARNING: ffmpeg install via winget failed.
+    echo [AUDIO] Install manually from: https://ffmpeg.org/download.html
+    echo [AUDIO] Audio delivery will not work until ffmpeg is installed.
     echo.
 )
 
