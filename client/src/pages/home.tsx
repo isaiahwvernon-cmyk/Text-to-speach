@@ -639,16 +639,28 @@ function TtsPanel() {
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700">
               {lastResult.steps.map((step, i) => {
-                const icon =
-                  step.status === "ok" ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" /> :
-                  step.status === "warning" ? <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" /> :
-                  step.status === "error" ? <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> :
-                  <span className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0 inline-block" />;
+                const dotCls =
+                  step.status === "ok"      ? "bg-green-500" :
+                  step.status === "warning" ? "bg-amber-400" :
+                  step.status === "error"   ? "bg-red-500"   : "bg-slate-300";
+                const labelCls =
+                  step.status === "ok"      ? "text-green-600 dark:text-green-400" :
+                  step.status === "warning" ? "text-amber-600 dark:text-amber-400" :
+                  step.status === "error"   ? "text-red-600 dark:text-red-400"     : "text-slate-400";
+                const statusLabel =
+                  step.status === "ok"      ? "OK" :
+                  step.status === "warning" ? "Pending" :
+                  step.status === "error"   ? "Failed"  : "Skipped";
                 return (
                   <div key={i} className="flex items-start gap-3 px-4 py-3">
-                    <div className="mt-0.5">{icon}</div>
+                    <div className="flex-shrink-0 mt-1.5">
+                      <span className={`block w-2.5 h-2.5 rounded-full ${dotCls}`} />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{step.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{step.name}</span>
+                        <span className={`text-xs font-bold ${labelCls}`}>{statusLabel}</span>
+                      </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{step.detail}</div>
                     </div>
                   </div>

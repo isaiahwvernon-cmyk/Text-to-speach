@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { SystemSettings, LogEntry } from "@shared/schema";
 import {
-  ArrowLeft, Settings, Phone, Radio, Mic, FileText, Trash2,
+  ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
   Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight,
 } from "lucide-react";
 
@@ -215,39 +215,7 @@ export default function ItSettingsPage() {
 
         {settings && (
           <>
-            {/* SIP Settings */}
-            <Section title="SIP Configuration" icon={Phone}>
-              <div className="space-y-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-300 flex gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>SIP credentials are used to place calls to IP-A1 speakers (Direct mode) or the IP-A1PG gateway (PG mode). Configure these to match your SIP server/PBX settings.</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="SIP Server Address">
-                    <input data-testid="input-sip-address" value={settings.sip.serverAddress} onChange={(e) => updateSip("serverAddress", e.target.value)} placeholder="192.168.1.1 or sip.example.com" className={INPUT_CLS} />
-                  </Field>
-                  <Field label="SIP Server Port">
-                    <input data-testid="input-sip-port" type="number" value={settings.sip.serverPort} onChange={(e) => updateSip("serverPort", Number(e.target.value))} className={INPUT_CLS} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="SIP Username">
-                    <input data-testid="input-sip-username" value={settings.sip.username} onChange={(e) => updateSip("username", e.target.value)} placeholder="sip_user" className={INPUT_CLS} />
-                  </Field>
-                  <Field label="SIP Password">
-                    <input data-testid="input-sip-password" type="password" value={settings.sip.password} onChange={(e) => updateSip("password", e.target.value)} placeholder="••••••••" className={INPUT_CLS} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="From Extension" hint="Extension this server registers as">
-                    <input data-testid="input-sip-from" value={settings.sip.fromExtension} onChange={(e) => updateSip("fromExtension", e.target.value)} placeholder="e.g., 100" className={INPUT_CLS} />
-                  </Field>
-                  <Field label="Realm" hint="Leave blank to auto-detect">
-                    <input data-testid="input-sip-realm" value={settings.sip.realm} onChange={(e) => updateSip("realm", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
-                  </Field>
-                </div>
-              </div>
-            </Section>
+            {/* SIP Settings — hidden until SIP PBX integration is needed */}
 
             {/* PG Settings */}
             <Section title="IP-A1PG Gateway" icon={Radio}>
