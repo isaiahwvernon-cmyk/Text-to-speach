@@ -1163,7 +1163,7 @@ export default function Home() {
             <div className="w-8 h-8 bg-[#FF8200] rounded-xl flex items-center justify-center flex-shrink-0">
               <Radio className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">REPIT</span>
+            <span className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">IV VoxNova</span>
           </div>
 
           <div className="hidden sm:flex flex-1 justify-center">

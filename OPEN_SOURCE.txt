@@ -1,5 +1,5 @@
 ================================================================================
-  REPIT — IP-A1 CONTROL + TTS PAGING SYSTEM
+  IV VoxNova — IP-A1 CONTROL + TTS PAGING SYSTEM
   OPEN SOURCE INFORMATION
 ================================================================================
 
@@ -9,7 +9,7 @@ LICENSE
 --------------------------------------------------------------------------------
 MIT License
 
-Copyright (c) 2024-2026 REPIT Contributors
+Copyright (c) 2024-2026 IV VoxNova Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +33,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 ABOUT THIS SOFTWARE
 --------------------------------------------------------------------------------
-REPIT (IP-A1 Control + TTS Paging System) is a free, open-source web
+IV VoxNova (IP-A1 Control + TTS Paging System) is a free, open-source web
 application for controlling TOA IP-A1 series network ceiling speakers and
 sending Text-to-Speech announcements over a local area network (LAN).
 
@@ -112,12 +112,12 @@ API ENDPOINTS USED (base URL: http://<speaker_ip>):
 --------------------------------------------------------------------------------
 THIRD-PARTY SOFTWARE & SYSTEM REQUIREMENTS
 --------------------------------------------------------------------------------
-REPIT requires the following third-party software to be installed on the
+IV VoxNova requires the following third-party software to be installed on the
 host machine. All are free and open-source unless otherwise noted.
 
   Node.js 18+                MIT     JavaScript runtime
     https://nodejs.org
-    Required to run the REPIT server.
+    Required to run the IV VoxNova server.
 
   Python 3.12                PSF     Python programming language
     https://www.python.org/downloads/release/python-3120/

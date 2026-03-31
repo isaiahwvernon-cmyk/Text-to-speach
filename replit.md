@@ -1,4 +1,4 @@
-# REPIT — IP-A1 Control + TTS Paging System
+# IV VoxNova — IP-A1 Control + TTS Paging System
 
 ## Overview
 A full-featured web application for controlling TOA IP-A1 speakers and sending Text-to-Speech announcements over SIP/RTP. Features role-based access control, multi-zone paging, and configurable audio routing.

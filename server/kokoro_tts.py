@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Kokoro TTS helper script for REPIT.
+Kokoro TTS helper script for IV VoxNova.
 Usage: python3 kokoro_tts.py --text "Hello world" --output /tmp/out.wav --speed 1.0
 """
 

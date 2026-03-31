@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   REPIT -- IP-A1 Control + TTS Paging
+echo   IV VoxNova -- IP-A1 Control + TTS Paging
 echo ==========================================
 echo.
 
@@ -67,7 +67,7 @@ echo [TTS] To enable real audio: install Python 3.8+ from https://python.org
 echo [TTS]   - During install, check "Add Python to PATH"
 echo [TTS]   - Or disable the Windows Store stub in:
 echo [TTS]     Settings ^> Apps ^> Advanced app settings ^> App execution aliases
-echo [TTS] REPIT will run in simulation mode without Python.
+echo [TTS] IV VoxNova will run in simulation mode without Python.
 echo.
 goto :CHECK_FFMPEG
 
@@ -140,9 +140,9 @@ if %errorlevel% equ 0 (
     echo.
 )
 
-:: ── Build REPIT ───────────────────────────────────────────────────────────────
+:: ── Build IV VoxNova ───────────────────────────────────────────────────────────────
 :BUILD
-echo Building REPIT... this takes about 30 seconds.
+echo Building IV VoxNova... this takes about 30 seconds.
 echo.
 
 if exist dist rmdir /s /q dist

@@ -217,5 +217,5 @@ export async function seedDefaultAdmin(): Promise<void> {
   };
 
   writeUsers([admin, itUser]);
-  console.log("[REPIT] Default users seeded — admin/admin and it/it1234");
+  console.log("[IV VoxNova] Default users seeded — admin/admin and it/it1234");
 }

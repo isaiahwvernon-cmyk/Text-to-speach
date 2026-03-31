@@ -1,14 +1,14 @@
 ================================================================================
-  REPIT — IP-A1 CONTROL + TTS PAGING SYSTEM
+  IV VoxNova — IP-A1 CONTROL + TTS PAGING SYSTEM
   USER GUIDE
 ================================================================================
 For teachers, staff, and administrators who use the app day-to-day.
 
 
 --------------------------------------------------------------------------------
-WHAT IS REPIT?
+WHAT IS IV VoxNova?
 --------------------------------------------------------------------------------
-REPIT is a web-based control system that lets you:
+IV VoxNova is a web-based control system that lets you:
 
   - Send voice announcements (Text-to-Speech) to speakers or paging zones
     from any phone, tablet, or computer — just by typing the message
@@ -22,7 +22,7 @@ same Wi-Fi can open it in their browser — no app install required.
 --------------------------------------------------------------------------------
 WHAT NEEDS TO BE INSTALLED ON THE HOST PC (IT SETUP)
 --------------------------------------------------------------------------------
-Before REPIT can be used, the following must be installed on the Windows PC
+Before IV VoxNova can be used, the following must be installed on the Windows PC
 that will run the server. This is a one-time setup done by IT.
 
   1. NODE.JS 18 OR NEWER
@@ -54,17 +54,17 @@ that will run the server. This is a one-time setup done by IT.
              → select "Path" → Edit → New → type  C:\ffmpeg\bin  → OK
        Verify: open a NEW Command Prompt → type:  ffmpeg -version
 
-  5. REPIT APPLICATION FOLDER
+  5. IV VoxNova APPLICATION FOLDER
        The folder containing start.bat and the rest of the program files
        (provided by your developer or IT team).
 
-Once all of the above are in place, REPIT is ready to run.
+Once all of the above are in place, IV VoxNova is ready to run.
 
 
 --------------------------------------------------------------------------------
 STARTING THE APP (WINDOWS)
 --------------------------------------------------------------------------------
-1. Open the REPIT folder on the PC
+1. Open the IV VoxNova folder on the PC
 2. Double-click  start.bat
 3. A black Command Prompt window appears — this is normal, leave it open
 4. The first time you run it, it may take about 1–2 minutes to build
@@ -80,7 +80,7 @@ To stop the app: close the Command Prompt window, or press Ctrl+C inside it.
 --------------------------------------------------------------------------------
 LOGGING IN
 --------------------------------------------------------------------------------
-When you open REPIT in a browser, you will see a login screen.
+When you open IV VoxNova in a browser, you will see a login screen.
 
 Enter your username and password. Your IT team or admin will give you
 your login credentials.
@@ -124,7 +124,7 @@ ON iPHONE / iPAD (Safari):
   1. Open the app in Safari
   2. Tap the Share button (box with arrow pointing up)
   3. Scroll down → tap "Add to Home Screen"
-  4. Give it a name (e.g. "REPIT") → tap "Add"
+  4. Give it a name (e.g. "IV VoxNova") → tap "Add"
 
 ON ANDROID (Chrome):
   1. Open the app in Chrome
@@ -140,7 +140,7 @@ TTS (Text-to-Speech) lets you type a message and have it spoken aloud
 through one or more speakers.
 
 STEP BY STEP:
-  1. Log in to REPIT on your phone, tablet, or computer
+  1. Log in to IV VoxNova on your phone, tablet, or computer
   2. On the main screen, you will see the TTS panel
   3. Select a Contact (zone/speaker group) from the dropdown
      — Contacts are set up by your admin and assigned to your account
@@ -312,7 +312,7 @@ PROBLEM: Cannot open the app on my phone
 PROBLEM: The app opens to a blank page or shows an error
   SOLUTION:
     - Close the Command Prompt window
-    - Delete the "dist" folder inside the REPIT folder
+    - Delete the "dist" folder inside the IV VoxNova folder
     - Double-click start.bat again to rebuild
 
 PROBLEM: Volume change doesn't respond

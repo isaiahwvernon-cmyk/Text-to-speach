@@ -21,7 +21,7 @@ function ProtectedRoute({ component: Component, roles }: {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <div className="text-slate-400 text-sm animate-pulse">Loading REPIT…</div>
+        <div className="text-slate-400 text-sm animate-pulse">Loading IV VoxNova…</div>
       </div>
     );
   }
@@ -38,7 +38,7 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <div className="text-slate-400 text-sm animate-pulse">Loading REPIT…</div>
+        <div className="text-slate-400 text-sm animate-pulse">Loading IV VoxNova…</div>
       </div>
     );
   }

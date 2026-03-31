@@ -1,7 +1,7 @@
 import type { User } from "@shared/schema";
 
-const TOKEN_KEY = "repit_token";
-const USER_KEY = "repit_user";
+const TOKEN_KEY = "voxnova_token";
+const USER_KEY = "voxnova_user";
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

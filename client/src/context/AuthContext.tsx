@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const u = await res.json();
         setUser(u);
-        localStorage.setItem("repit_user", JSON.stringify(u));
+        localStorage.setItem("voxnova_user", JSON.stringify(u));
       } else {
         clearAuth();
         setUser(null);

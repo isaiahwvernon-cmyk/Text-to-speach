@@ -32,12 +32,12 @@ export default function QrPage() {
             <Radio className="w-6 h-6 text-white" />
           </div>
           <div className="text-left">
-            <div className="font-black text-2xl text-slate-900 dark:text-white">REPIT</div>
+            <div className="font-black text-2xl text-slate-900 dark:text-white">IV VoxNova</div>
             <div className="text-xs text-slate-400">IP-A1 Control + TTS Paging</div>
           </div>
         </div>
 
-        <h1 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Connect to REPIT</h1>
+        <h1 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Connect to IV VoxNova</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Scan with your phone or open the URL below on any device on the same network.</p>
 
         {loading ? (
@@ -62,7 +62,7 @@ export default function QrPage() {
               <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-100">
                 <img
                   src="/api/qr/image"
-                  alt="QR code to access REPIT"
+                  alt="QR code to access IV VoxNova"
                   className="w-48 h-48 block"
                 />
               </div>

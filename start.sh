@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "=========================================="
-echo "  REPIT -- IP-A1 Control + TTS Paging"
+echo "  IV VoxNova -- IP-A1 Control + TTS Paging"
 echo "=========================================="
 echo
 
@@ -37,7 +37,7 @@ fi
 if [ -z "$PYTHON_CMD" ]; then
     echo "[TTS] WARNING: Python not found. Kokoro TTS will not be available."
     echo "[TTS] To enable real audio: install Python 3.8+ from https://python.org"
-    echo "[TTS] REPIT will still run in simulation mode without it."
+    echo "[TTS] IV VoxNova will still run in simulation mode without it."
     echo
 else
     PYVER=$($PYTHON_CMD --version)
@@ -109,8 +109,8 @@ else
     fi
 fi
 
-# ── Build REPIT ────────────────────────────────────────────────────────────────
-echo "Building REPIT... this takes about 30 seconds."
+# ── Build IV VoxNova ────────────────────────────────────────────────────────────────
+echo "Building IV VoxNova... this takes about 30 seconds."
 echo
 
 rm -rf dist

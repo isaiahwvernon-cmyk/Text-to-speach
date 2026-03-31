@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { getUserById } from "./db.js";
 import type { UserRole } from "@shared/schema";
 
-const JWT_SECRET = process.env.JWT_SECRET || "repit-secret-key-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "voxnova-secret-key-change-in-production";
 const TOKEN_EXPIRY = "24h";
 
 export interface AuthPayload {

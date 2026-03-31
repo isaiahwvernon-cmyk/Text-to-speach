@@ -123,8 +123,8 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
   // ── Build SDP offer ───────────────────────────────────────────────────────
   const sdp =
     "v=0\r\n" +
-    `o=repit 1 1 IN IP4 ${localIp}\r\n` +
-    "s=REPIT Paging\r\n" +
+    `o=voxnova 1 1 IN IP4 ${localIp}\r\n` +
+    "s=IV VoxNova Paging\r\n" +
     `c=IN IP4 ${localIp}\r\n` +
     "t=0 0\r\n" +
     `m=audio ${localRtpPort} RTP/AVP ${codecInfo.pt}\r\n` +
@@ -142,13 +142,13 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     const lines: string[] = [
       `${method} sip:${targetIp}:${targetPort} SIP/2.0`,
       `Via: SIP/2.0/UDP ${localIp}:${localSipPort};branch=z9hG4bK${randomHex(8)};rport`,
-      `From: "REPIT" <sip:repit@${localIp}>;tag=${fromTag}`,
+      `From: "IV VoxNova" <sip:voxnova@${localIp}>;tag=${fromTag}`,
       `To: <sip:${targetIp}>${toTag ? `;tag=${toTag}` : ""}`,
       `Call-ID: ${callId}`,
       `CSeq: ${cseqNum} ${method}`,
       "Max-Forwards: 70",
-      "User-Agent: REPIT/1.0",
-      `Contact: <sip:repit@${localIp}:${localSipPort}>`,
+      "User-Agent: IVVoxNova/1.0",
+      `Contact: <sip:voxnova@${localIp}:${localSipPort}>`,
     ];
     if (body && contentType) {
       lines.push(`Content-Type: ${contentType}`);
