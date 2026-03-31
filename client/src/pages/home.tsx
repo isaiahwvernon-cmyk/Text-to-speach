@@ -52,11 +52,15 @@ function SystemStatusBar() {
     { label: "TTS", key: "tts" },
     { label: "PG", key: "pg" },
   ];
+  function resolveStatus(val: any): string {
+    if (val && typeof val === "object") return val.status ?? "unknown";
+    return val as string;
+  }
   return (
     <div className="flex items-center gap-3 flex-wrap">
       {items.map(({ label, key }) => (
         <span key={key} className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-          <StatusDot status={status[key]} />
+          <StatusDot status={resolveStatus(status[key])} />
           {label}
         </span>
       ))}
@@ -414,6 +418,13 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
     if (room.mode !== "pg" && room.speakers?.length) fetchStatus();
   }, [fetchStatus, room.mode]);
 
+  function applyOptimistic(spkId: string, patch: Partial<SpeakerStatus>) {
+    setStatuses((prev) => ({
+      ...prev,
+      [spkId]: { ...(prev[spkId] ?? {}), ...patch } as SpeakerStatus,
+    }));
+  }
+
   async function callSpeaker(spk: SpeakerType, endpoint: string, extra: Record<string, any>) {
     try {
       const res = await apiFetch(endpoint, {
@@ -429,6 +440,24 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
+  }
+
+  function setVolumeOptimistic(spk: SpeakerType, volume: number) {
+    applyOptimistic(spk.id, { volume });
+    callSpeaker(spk, "/api/speaker/volume/set", { volume });
+  }
+
+  function incVolumeOptimistic(spk: SpeakerType) {
+    const cur = statuses[spk.id]?.volume ?? 31;
+    const max = statuses[spk.id]?.max ?? 61;
+    applyOptimistic(spk.id, { volume: Math.min(cur + 1, max) });
+    callSpeaker(spk, "/api/speaker/volume/increment", {});
+  }
+
+  function decVolumeOptimistic(spk: SpeakerType) {
+    const cur = statuses[spk.id]?.volume ?? 31;
+    applyOptimistic(spk.id, { volume: Math.max(cur - 1, 0) });
+    callSpeaker(spk, "/api/speaker/volume/decrement", {});
   }
 
   async function callAll(endpoint: string, extra: Record<string, any>) {
@@ -530,9 +559,9 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
               key={speaker.id}
               speaker={speaker}
               status={statuses[speaker.id] ?? null}
-              onVolumeSet={(v) => callSpeaker(speaker, "/api/speaker/volume/set", { volume: v })}
-              onVolumeInc={() => callSpeaker(speaker, "/api/speaker/volume/increment", {})}
-              onVolumeDec={() => callSpeaker(speaker, "/api/speaker/volume/decrement", {})}
+              onVolumeSet={(v) => setVolumeOptimistic(speaker, v)}
+              onVolumeInc={() => incVolumeOptimistic(speaker)}
+              onVolumeDec={() => decVolumeOptimistic(speaker)}
               onMuteToggle={() => {
                 const current = statuses[speaker.id]?.muteState;
                 callSpeaker(speaker, "/api/speaker/mute/set", { mute_state: current === "mute" ? "unmute" : "mute" });
