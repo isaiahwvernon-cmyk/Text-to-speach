@@ -111,9 +111,6 @@ export default function LoginPage() {
         <span className="flex items-center gap-1.5"><Radio className="w-3.5 h-3.5" /> IP-A1 Control</span>
       </div>
 
-      <p className="mt-6 text-xs text-slate-400 text-center">
-        Default credentials: <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">admin / admin</code>
-      </p>
     </div>
   );
 }

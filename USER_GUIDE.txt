@@ -1,319 +1,348 @@
 ================================================================================
-  IP-A1 VOLUME CONTROLLER — USER GUIDE
+  REPIT — IP-A1 CONTROL + TTS PAGING SYSTEM
+  USER GUIDE
 ================================================================================
 For teachers, staff, and administrators who use the app day-to-day.
 
 
 --------------------------------------------------------------------------------
-WHAT IS THIS APP?
+WHAT IS REPIT?
 --------------------------------------------------------------------------------
-IP-A1 Volume Controller is a simple web tool that lets you control the volume
-of your classroom ceiling speakers from your phone, tablet, or computer —
-without touching a physical amplifier or installing any app.
+REPIT is a web-based control system that lets you:
 
-It runs on a small program on a Windows PC in your school. Once it's running,
-anyone on the same Wi-Fi network can open it in their browser and control the
-speakers in their room.
+  - Send voice announcements (Text-to-Speech) to speakers or paging zones
+    from any phone, tablet, or computer — just by typing the message
+  - Control the volume and mute state of TOA IP-A1 ceiling speakers
+  - Manage paging zones and contacts across your building or campus
 
-Think of it like a remote control for your speakers, that lives in a web browser.
+It runs on a Windows PC connected to your network. Once started, anyone on the
+same Wi-Fi can open it in their browser — no app install required.
 
 
 --------------------------------------------------------------------------------
-WHAT YOU NEED BEFORE STARTING
+WHAT NEEDS TO BE INSTALLED ON THE HOST PC (IT SETUP)
 --------------------------------------------------------------------------------
-On the Windows PC that runs the app:
-  1. Node.js installed (free download from https://nodejs.org — get the LTS version)
-     - After installing, restart the PC once
-     - To check it worked: open Command Prompt and type:  node --version
-       You should see something like v20.0.0
+Before REPIT can be used, the following must be installed on the Windows PC
+that will run the server. This is a one-time setup done by IT.
 
-  2. The IP-A1 Volume Controller folder (provided by your IT team or developer)
-     - This is the folder containing start.bat and the rest of the program files
+  1. NODE.JS 18 OR NEWER
+       Download: https://nodejs.org  (click the LTS button, run the installer)
+       After installing: restart the PC
+       Verify: open Command Prompt → type:  node --version
+               You should see something like v20.0.0
 
-Your school network:
-  - The speakers must be connected to the same Wi-Fi or network as the PC
-  - Each speaker must have its own fixed IP address (set up by your IT team)
-  - You will need the IP address and login password for each speaker
+  2. PYTHON 3.12
+       Download: https://www.python.org/downloads/release/python-3120/
+       CRITICAL: During installation, CHECK the box that says
+                 "Add Python 3.12 to PATH" before clicking Install
+       After installing: restart the PC
+       Verify: open Command Prompt → type:  python --version
+               You should see:  Python 3.12.x
 
-That's it. No special software is needed on phones or tablets — just a browser.
+  3. PYTHON PACKAGES (for TTS voice announcements)
+       After installing Python 3.12, open Command Prompt and type:
+         pip install kokoro soundfile
+       This installs the Kokoro text-to-speech engine.
+       Wait for it to finish — it may take a few minutes on first install.
+
+  4. FFMPEG (for audio delivery to speakers)
+       Download: https://ffmpeg.org/download.html
+         → Click "Windows builds" → download a release build
+         → Extract the zip, copy the folder somewhere (e.g. C:\ffmpeg)
+         → Add C:\ffmpeg\bin to your Windows System PATH:
+             Start → search "Environment Variables" → Edit system variables
+             → select "Path" → Edit → New → type  C:\ffmpeg\bin  → OK
+       Verify: open a NEW Command Prompt → type:  ffmpeg -version
+
+  5. REPIT APPLICATION FOLDER
+       The folder containing start.bat and the rest of the program files
+       (provided by your developer or IT team).
+
+Once all of the above are in place, REPIT is ready to run.
 
 
 --------------------------------------------------------------------------------
 STARTING THE APP (WINDOWS)
 --------------------------------------------------------------------------------
-1. Open the IP-A1 Volume Controller folder on the PC
+1. Open the REPIT folder on the PC
 2. Double-click  start.bat
-3. A black window (Command Prompt) will appear — this is normal, leave it open
-4. The first time you run it, it may take about 30 seconds to build the app
-   (you will see text scrolling in the black window)
-5. After a few seconds, your web browser will automatically open to a page
-   showing a QR code — this is the Connection Page (explained below)
+3. A black Command Prompt window appears — this is normal, leave it open
+4. The first time you run it, it may take about 1–2 minutes to build
+   (you will see text scrolling in the black window — this is normal)
+5. After building, your web browser opens automatically to a QR code page
 
 IMPORTANT: Keep the black Command Prompt window open. If you close it,
 the app stops working. You can minimize it, just don't close it.
 
-To stop the app: close the black Command Prompt window, or press Ctrl+C inside it.
+To stop the app: close the Command Prompt window, or press Ctrl+C inside it.
 
 
 --------------------------------------------------------------------------------
-THE CONNECTION PAGE (QR CODE)
+LOGGING IN
 --------------------------------------------------------------------------------
-When the app starts, your browser opens to the Connection Page.
+When you open REPIT in a browser, you will see a login screen.
+
+Enter your username and password. Your IT team or admin will give you
+your login credentials.
+
+There are three types of accounts:
+  USER     — Can send TTS announcements and control speakers in assigned zones
+  ADMIN    — Can manage users and contacts (zones/rooms)
+  IT       — Full system access including TTS engine settings and logs
+
+
+--------------------------------------------------------------------------------
+THE QR CODE PAGE
+--------------------------------------------------------------------------------
+When the app starts, a QR code page opens automatically.
 This page shows:
 
   - A large QR CODE
   - The NETWORK ADDRESS (e.g. http://192.168.1.50:5000)
   - Instructions for connecting other devices
 
-WHAT IS THE QR CODE?
-  The QR code contains the web address of the app on your school's network.
-  When a phone or tablet scans it, the browser on that device opens the app
-  automatically — no typing required.
-
 HOW TO CONNECT A PHONE OR TABLET:
   Method 1 — QR Code (easiest):
-    1. Open the Camera app on the phone/tablet (or use a QR scanner app)
+    1. Open the Camera app on the phone/tablet (or a QR scanner app)
     2. Point it at the QR code on the screen
     3. Tap the notification/link that appears
-    4. The app opens in the phone's browser
+    4. The app opens in the phone's browser — log in with your credentials
 
   Method 2 — Type the address:
     1. Open any web browser on the phone/tablet
-    2. Type the address shown on the Connection Page (e.g. http://192.168.1.50:5000)
-    3. The app opens
+    2. Type the address shown on the QR code page
+    3. Log in with your credentials
 
-  IMPORTANT: The phone/tablet must be connected to the SAME Wi-Fi network as
-  the PC. It will NOT work on mobile data (4G/5G).
-
-The PC's browser can also navigate to the main app at any time:
-  Click "Go to App" on the Connection Page, or type  http://localhost:5000
+  IMPORTANT: The phone/tablet must be on the SAME Wi-Fi as the PC.
+             It will NOT work on mobile data (4G/5G).
 
 
 --------------------------------------------------------------------------------
-SAVING A SHORTCUT ON YOUR PHONE OR TABLET (APP-LIKE EXPERIENCE)
+SAVING TO YOUR PHONE HOME SCREEN (APP-LIKE EXPERIENCE)
 --------------------------------------------------------------------------------
-You can save the IP-A1 Controller to your phone's home screen so it opens
-just like a real app — with its own icon, no browser address bar.
-
 ON iPHONE / iPAD (Safari):
-  1. Open the app in Safari on your iPhone/iPad
-  2. Tap the Share button (the box with an arrow pointing up)
-  3. Scroll down and tap "Add to Home Screen"
-  4. Give it a name (e.g. "Room Control") and tap "Add"
-  5. The app icon now appears on your home screen — tap it to open like an app!
+  1. Open the app in Safari
+  2. Tap the Share button (box with arrow pointing up)
+  3. Scroll down → tap "Add to Home Screen"
+  4. Give it a name (e.g. "REPIT") → tap "Add"
 
-ON ANDROID PHONE / TABLET (Chrome):
-  1. Open the app in Chrome on your Android device
-  2. Tap the three-dot menu (⋮) in the top-right corner
-  3. Tap "Add to Home screen"
-  4. Tap "Add" when prompted
-  5. The icon appears on your home screen
+ON ANDROID (Chrome):
+  1. Open the app in Chrome
+  2. Tap the three-dot menu (⋮) → "Add to Home screen" → "Add"
 
-Once saved, opening the app from the home screen removes the browser address
-bar and gives a full-screen, app-like experience.
+Once added, the app opens full-screen without a browser address bar.
 
 
 --------------------------------------------------------------------------------
-THE MAIN SCREEN — YOUR ROOMS
+SENDING A VOICE ANNOUNCEMENT (TTS)
 --------------------------------------------------------------------------------
-When you open the app, you see the Rooms screen.
-Each room is shown as a card (tile) with the room name.
+TTS (Text-to-Speech) lets you type a message and have it spoken aloud
+through one or more speakers.
 
-  - A room with ONE speaker shows the speaker's IP address below the name
-  - A room with MULTIPLE SPEAKERS shows a number badge on the speaker icon
-    (e.g. a small "2" or "3") and lists the speaker names
+STEP BY STEP:
+  1. Log in to REPIT on your phone, tablet, or computer
+  2. On the main screen, you will see the TTS panel
+  3. Select a Contact (zone/speaker group) from the dropdown
+     — Contacts are set up by your admin and assigned to your account
+  4. Type your announcement text in the text box
+     — e.g. "Attention please, all staff report to the main office."
+  5. Tap "Send Announcement"
+  6. A progress bar appears showing the announcement being processed
+     — If another announcement is being sent, yours will queue automatically
+     — You will see your position: "You are #2 in line"
+  7. When it completes, a success message appears
 
-Tap any room card to open the volume controls for that room.
-
-If you have more than 5 rooms, a SEARCH BAR appears at the top.
-You can search by room name, speaker label, or IP address.
-
-
---------------------------------------------------------------------------------
-CONTROLLING VOLUME IN A ROOM
---------------------------------------------------------------------------------
-When you tap a room, you see the Control Panel for that room.
-
-AT THE TOP:
-  - Back arrow (←) to go back to the room list
-  - Room name
-  - Connection status:
-      • Green dot = speaker connected and responding
-      • Red dot = speaker unreachable (check it's powered on and on the network)
-
-IN THE MIDDLE:
-  A large circular dial shows the current volume as a percentage (0% to 100%).
-  Below it:
-
-  SLIDER: Drag left/right to set volume precisely
-  MINUS (−) BUTTON: Decrease volume by one step
-  PLUS (+) BUTTON: Increase volume by one step
-
-  MUTE / UNMUTE BUTTON:
-    - Tap to mute the speaker (button turns red, says "Unmute Speaker")
-    - Tap again to restore volume (button returns to normal)
-    - Muting does NOT change the volume setting — it just silences the speaker.
-      The volume setting is remembered when you unmute.
-
-AT THE BOTTOM — PRESETS:
-  Three quick-access buttons for common volume levels:
-
-    LOW     = 25% volume  — quiet background audio
-    NORMAL  = 50% volume  — clear speech, normal classroom use
-    LOUD    = 78% volume  — louder presentations or noisy environments
-
-  Tap a preset to instantly jump to that volume.
-  The active preset is highlighted in orange.
-
-CLASSROOM EXAMPLE:
-  You are a teacher in Room 101. You open the app on your phone, tap "Room 101",
-  and see the speaker is connected (green dot). Before class, you tap NORMAL to
-  set a comfortable volume. During a video, you slide it up higher. At the end
-  of class, you tap MUTE to silence it while students leave.
+TIPS:
+  - Keep announcements clear and concise
+  - Presets (saved messages) appear below the text box — tap one to use it
+  - Your admin can add presets to your account for frequently used messages
+  - The TTS engine runs locally — no internet is needed for announcements
 
 
 --------------------------------------------------------------------------------
-ROOMS WITH MULTIPLE SPEAKERS (GROUPED SPEAKERS)
+VOLUME CONTROL
 --------------------------------------------------------------------------------
-If a room has more than one ceiling speaker (e.g. a large gym or auditorium
-with both a front speaker and a rear speaker), they can all be controlled
-from one place.
+To control the volume of a room's speakers:
 
-SYNCED MODE (default — link icon in header):
-  All speakers in the room are controlled together.
-  When you move the slider or tap a preset, ALL speakers change at the same time.
-  "Mute All" silences every speaker in the room instantly.
+  1. Log in and look for the volume control panel on your screen
+  2. Select the contact/room you want to control
+  3. Use the volume slider or +/- buttons to adjust volume
+  4. Tap "Mute" to silence the speaker (Mute does not change the volume level;
+     it just silences it until you tap "Unmute")
 
-  Below the controls, you will see a status list showing each speaker's name,
-  IP address, and a green/red dot indicating if it is connected.
+Volume is shown as a percentage (0% to 100%).
 
-  CLASSROOM EXAMPLE (GYM):
-    Room "Main Gym" has 4 speakers (Front Left, Front Right, Rear Left, Rear Right).
-    You tap "Mute All" before an assembly starts. When ready, tap "Unmute All"
-    and all four speakers come back on at the same level. You drag the slider to
-    set the volume for the whole room.
-
-INDIVIDUAL MODE (unlink icon in header):
-  Tap the "Synced" button in the top-right of the control panel to switch to
-  "Individual" mode.
-  Each speaker now has its own separate controls:
-    - Its own volume slider and +/− buttons
-    - Its own mute button
-    - Its own Low/Normal/Loud presets
-  This lets you make the front speakers louder than the rear, for example.
-
-  CLASSROOM EXAMPLE (THEATRE):
-    The school theatre has a front speaker over the stage and a rear speaker
-    at the back for students sitting far away. In Individual mode, you can set
-    the front speaker to Normal and the rear speaker to Loud, so everyone
-    hears equally well.
-
-To switch back to Synced mode, tap the "Individual" button in the header.
+PRESETS:
+  LOW     — quiet background audio
+  NORMAL  — comfortable speech level
+  LOUD    — louder, for noisy environments or presentations
 
 
 --------------------------------------------------------------------------------
-ADMIN MODE — MANAGING ROOMS
+CONTACTS (ZONES / ROOMS)
 --------------------------------------------------------------------------------
-Adding, editing, or deleting rooms is protected by an admin password.
-This prevents students or other users from accidentally changing the setup.
+Contacts are paging zones or speaker groups that you can send announcements to.
+They are set up by your Admin or IT team.
 
-TO UNLOCK ADMIN MODE:
-  1. Tap the lock icon (🔒) in the top-right corner of the Rooms screen
-  2. Enter the admin password:  IPA1
-  3. Tap "Unlock"
-  The lock icon turns orange (🔓) and the "Add Room" button appears.
+There are two types of contact:
 
-TO LOCK ADMIN MODE AGAIN:
-  Tap the orange lock icon — it locks instantly with no password needed.
+  DIRECT SIP — Sends audio directly to one or more speaker IP addresses.
+    Use this when you want to page specific speakers by their network address.
 
-ADMIN MODE FEATURES:
-  - Add Room: create a new room with one or more speakers
-  - Edit Room (pencil icon on tile): change room name or speaker details
-  - Delete Room (trash icon on tile): tap once to arm, tap "Delete?" to confirm
+  PG GATEWAY — Sends audio through a Paging Gateway device to a multicast zone.
+    Use this for building-wide or area-wide paging systems.
+    The zone is identified by its DTMF extension (e.g. extension "1" for Zone 1).
 
-ADDING A NEW ROOM:
-  1. Unlock admin mode
-  2. Tap "Add Room" (or the + tile at the end of the grid)
-  3. Enter a Room Name (e.g. "Science Lab")
-  4. Fill in the Speaker details:
-       - Label: a name for this speaker (e.g. "Main Speaker" or "Front")
-       - IP Address: the speaker's network address (e.g. 192.168.1.105)
-         (ask your IT team if you don't know this)
-       - Username: the speaker's login username (usually "admin")
-       - Password: the speaker's login password (ask your IT team)
-  5. To add a second speaker to the same room, tap "+ Add Speaker"
-     and fill in its details
-  6. Tap "Add Room" to save
-
-Room settings are saved automatically and shared across all devices.
-If you add a room on the PC, anyone connected on their phone will see it too
-after refreshing.
+As a regular user, you will only see contacts that have been assigned to you
+by your admin. You cannot add or change contacts yourself.
 
 
 --------------------------------------------------------------------------------
-HOW SPEAKER CREDENTIALS ARE STORED
+ADMIN MODE — MANAGING USERS AND CONTACTS
 --------------------------------------------------------------------------------
-Speaker IP addresses, usernames, and passwords are stored in a file called
-rooms.json on the PC where the app runs.
+(For Admin accounts only)
 
-These credentials are NOT sent to or stored on any other device or the internet.
-They are only used by the PC to communicate with the speakers on your LAN.
-Mobile devices and tablets never directly see the speaker passwords.
+Admins can:
+  - Create, edit, and delete user accounts
+  - Create, edit, and delete contacts (paging zones/rooms)
+  - Assign contacts to user accounts
+  - Set TTS presets for each user
+
+ACCESS ADMIN PANEL:
+  - Tap your name or the Admin menu in the top-right corner of the main screen
+  - The Admin panel has two tabs: USERS and CONTACTS
+
+ADDING A USER:
+  1. Go to Admin → Users tab → click "Add User"
+  2. Enter: Username, Display Name, Password, Role
+  3. Toggle "TTS Enabled" if this user should be able to send announcements
+  4. Assign contacts (zones) that this user can page
+  5. Click "Create User"
+
+ADDING A CONTACT:
+  1. Go to Admin → Contacts tab → click "Add Contact"
+  2. Enter a Name (e.g. "Main Office", "Zone A", "Gym")
+  3. Choose the Mode:
+       Direct SIP — enter the speaker IP address, username, and password
+       PG Gateway — select the gateway and enter the DTMF zone extension
+  4. Click Save
+
+ASSIGNING CONTACTS TO USERS:
+  When editing a user, the "Assigned Contacts" section lets you check/uncheck
+  which zones that user can page. Users only see their assigned contacts.
+
+
+--------------------------------------------------------------------------------
+IT SETTINGS — SYSTEM CONFIGURATION
+--------------------------------------------------------------------------------
+(For IT accounts only)
+
+IT staff can configure the system via IT Settings (gear icon in the header).
+
+SYSTEM STATUS:
+  - Server: should always show green (OK)
+  - TTS Engine: shows "OK" if Python 3.12 and kokoro are installed correctly
+                shows "Unavailable" if Python or kokoro is not found
+  - Paging Gateway: shows "OK" if at least one gateway is configured with an IP
+
+PAGING GATEWAYS:
+  Add one or more Paging Gateway devices (e.g. IP-A1PG).
+  Each gateway has:
+    - Name (e.g. "Main Building", "North Wing")
+    - IP Address (the device's network address)
+    - SIP Port (default 5060)
+    - Default Zone Extension (used when a contact doesn't specify one)
+
+  You can add multiple gateways for different areas of your facility.
+  Contacts are then assigned to a specific gateway.
+
+TTS ENGINE SETTINGS:
+  - Default Codec: audio format (G.711u recommended for most systems)
+  - Default Mode: Direct SIP or PG Gateway
+  - DTMF Delay: time between dialling and speaking (adjust if zones cut off)
+  - Chime: play a chime tone before announcements
+  - Post-Chime Delay: pause after chime before speaking
+  - Voice Speed / Pitch: adjust the TTS voice characteristics
+
+LOGGING:
+  - Enable/disable system logging
+  - Set log retention period (days)
+  - View all system activity: TTS sends, logins, configuration changes
+  - Clear logs when needed
+
+IF TTS IS NOT WORKING:
+  The TTS Engine status will say "Unavailable" with a reason.
+  Common causes:
+    - Python 3.12 is not installed, or not in PATH
+      Fix: Re-install Python 3.12, check "Add to PATH", restart the PC
+    - kokoro package is not installed
+      Fix: Open Command Prompt → type:  pip install kokoro soundfile
+    - ffmpeg is not in PATH
+      Fix: Download ffmpeg, add its bin folder to the Windows PATH
 
 
 --------------------------------------------------------------------------------
 TROUBLESHOOTING
 --------------------------------------------------------------------------------
-PROBLEM: Red dot next to room name / "Speaker unreachable" message
+PROBLEM: Cannot log in
   SOLUTION:
-    1. Check that the speaker is powered on (light on the speaker unit)
-    2. Check that the speaker's network cable is connected (if wired)
-    3. Make sure the PC and speaker are on the same network
-    4. Ask IT to verify the IP address of the speaker hasn't changed
-    5. Try refreshing the page
+    - Check your username and password with your admin
+    - Passwords are case-sensitive
+
+PROBLEM: Red dot / "TTS Engine Unavailable" in IT Settings
+  SOLUTION:
+    - Open Command Prompt and type:  python --version
+      If it does not show Python 3.12.x, reinstall Python 3.12 with PATH checked
+    - Then type:  pip install kokoro soundfile
+    - Restart the app (close Command Prompt window, double-click start.bat again)
+
+PROBLEM: Announcement sent but nothing played through speakers
+  SOLUTION:
+    - Check that the Contact is configured correctly (IP address / gateway)
+    - Check that ffmpeg is installed and in PATH (type  ffmpeg -version)
+    - Check the speaker is powered on and connected to the network
+    - For PG Gateway contacts, verify the gateway IP and extension in IT Settings
 
 PROBLEM: Cannot open the app on my phone
   SOLUTION:
-    1. Make sure your phone is on the SAME Wi-Fi as the PC (not mobile data)
-    2. Try typing the address manually (e.g. http://192.168.1.50:5000)
-    3. Make sure the black Command Prompt window is still open on the PC
-    4. Try scanning the QR code again from the Connection Page
+    - Make sure your phone is on the SAME Wi-Fi as the PC (not mobile data)
+    - Try typing the address manually (e.g. http://192.168.1.50:5000)
+    - Make sure the black Command Prompt window is still open on the PC
 
-PROBLEM: Volume change doesn't seem to work
+PROBLEM: The app opens to a blank page or shows an error
   SOLUTION:
-    1. Check the speaker connection (red/green dot in the app)
-    2. Try pressing the − or + button instead of the slider
-    3. Check if the speaker is muted (red mute button) — unmute first
+    - Close the Command Prompt window
+    - Delete the "dist" folder inside the REPIT folder
+    - Double-click start.bat again to rebuild
 
-PROBLEM: My rooms disappeared
+PROBLEM: Volume change doesn't respond
   SOLUTION:
-    1. If the app shows "Local only — tap to retry", tap it to reconnect
-    2. Make sure the black Command Prompt window is still open on the PC
-    3. Try refreshing the page — room list will reload from the server
+    - Check the speaker connection status (green/red dot in the contact panel)
+    - Verify the speaker IP address and credentials in the Contact settings
+    - Ensure the PC and speaker are on the same network subnet
 
-PROBLEM: The app opens to a blank page
+PROBLEM: TTS queue is stuck
   SOLUTION:
-    1. Close the Command Prompt window
-    2. Delete the "dist" folder inside the app folder
-    3. Double-click start.bat again to rebuild
-
-PROBLEM: I forgot the admin password
-  SOLUTION: The password is  IPA1  (capital letters, no spaces)
-  If it was changed, ask your IT administrator or developer.
+    - Wait a moment — large queues process automatically one at a time
+    - If stuck for more than 2 minutes, restart the app
+    - Check IT Settings → System Logs for error details
 
 
 --------------------------------------------------------------------------------
 QUICK REFERENCE CARD
 --------------------------------------------------------------------------------
-START THE APP:      Double-click start.bat on the PC
-CONNECT PHONE:      Scan QR code or type http://[PC's IP]:5000
-SAVE TO HOME SCREEN: Share → Add to Home Screen (iPhone) or Menu → Add to Home Screen (Android)
-ADMIN PASSWORD:     IPA1
-VOLUME RANGE:       0 (silent) to 100% (maximum)
-PRESETS:            Low = 25%   Normal = 50%   Loud = 78%
-MUTE:               Silences speaker without changing volume setting
-SYNC MODE:          All speakers in room change together
-INDIVIDUAL MODE:    Each speaker controlled separately
+START THE APP:          Double-click start.bat on the PC
+CONNECT PHONE:          Scan QR code or type http://[PC's IP]:5000
+SAVE TO HOME SCREEN:    Share → "Add to Home Screen" (iPhone/iPad)
+                        Menu (⋮) → "Add to Home screen" (Android)
+SEND ANNOUNCEMENT:      Select contact → type text → Send Announcement
+VOLUME CONTROL:         Select contact → use slider or +/− buttons
+MUTE:                   Tap Mute to silence (volume is remembered on unmute)
+TTS PRESETS:            Saved announcement texts — tap to fill the text box
+ADMIN PANEL:            Manage users and contacts (Admin role only)
+IT SETTINGS:            Configure gateways, TTS engine, logging (IT role only)
+DEFAULT ADMIN:          admin / admin
+DEFAULT IT:             it / it1234
 
 
 ================================================================================

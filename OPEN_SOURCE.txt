@@ -1,5 +1,6 @@
 ================================================================================
-  IP-A1 VOLUME CONTROLLER — OPEN SOURCE INFORMATION
+  REPIT — IP-A1 CONTROL + TTS PAGING SYSTEM
+  OPEN SOURCE INFORMATION
 ================================================================================
 
 
@@ -8,7 +9,7 @@ LICENSE
 --------------------------------------------------------------------------------
 MIT License
 
-Copyright (c) 2024 IP-A1 Volume Controller Contributors
+Copyright (c) 2024-2026 REPIT Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,12 +33,25 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 ABOUT THIS SOFTWARE
 --------------------------------------------------------------------------------
-IP-A1 Volume Controller is a free, open-source web application for controlling
-TOA IP-A1 series network ceiling speakers over a local area network (LAN).
+REPIT (IP-A1 Control + TTS Paging System) is a free, open-source web
+application for controlling TOA IP-A1 series network ceiling speakers and
+sending Text-to-Speech announcements over a local area network (LAN).
 
 It is designed for educational institutions, offices, and any environment using
 TOA IP-A1 series speakers where teachers or staff need a simple, mobile-friendly
-interface to control audio without physical access to amplifiers.
+interface to control audio and make voice announcements without physical access
+to amplifiers or dedicated paging hardware.
+
+Key features:
+  - Role-based user access (User / Admin / IT)
+  - Text-to-Speech announcements via Kokoro TTS (local, offline, free)
+  - Direct SIP audio routing to individual speakers
+  - Paging Gateway (PG) routing for multicast zone paging
+  - Multiple configurable paging gateways
+  - Contact-based routing with per-user assignments
+  - Full audit logging of all system activity
+  - QR code for instant phone/tablet connection
+  - TTS job queue for concurrent users
 
 This software is NOT affiliated with, endorsed by, or officially supported by
 TOA Corporation or TOA Canada. It is a third-party community tool that uses
@@ -66,6 +80,7 @@ Relevant product series for which this software is designed:
   - IP-A1F (flush-mount ceiling speaker)
   - IP-A1T (tile-type ceiling speaker)
   - Other IP-A1 series models with HTTP API v2 support
+  - IP-A1PG (Paging Gateway for multicast zone audio)
 
 To obtain the full IP-A1 API specification, contact TOA technical support or
 refer to the IP-A1 series installation and technical manual, which documents:
@@ -95,9 +110,43 @@ API ENDPOINTS USED (base URL: http://<speaker_ip>):
 
 
 --------------------------------------------------------------------------------
-OPEN SOURCE DEPENDENCIES
+THIRD-PARTY SOFTWARE & SYSTEM REQUIREMENTS
 --------------------------------------------------------------------------------
-This software is built on the following open-source packages.
+REPIT requires the following third-party software to be installed on the
+host machine. All are free and open-source unless otherwise noted.
+
+  Node.js 18+                MIT     JavaScript runtime
+    https://nodejs.org
+    Required to run the REPIT server.
+
+  Python 3.12                PSF     Python programming language
+    https://www.python.org/downloads/release/python-3120/
+    IMPORTANT: Must be installed with "Add Python to PATH" checked.
+    Required for the Kokoro TTS engine. Python 3.12 is specifically
+    recommended for compatibility with the kokoro package.
+
+  kokoro (Python package)    Apache 2.0   TTS model engine
+    Install: pip install kokoro
+    An 82-million parameter, offline text-to-speech model.
+    Runs entirely locally — no internet connection required during use.
+
+  soundfile (Python package) BSD     Audio file I/O library
+    Install: pip install soundfile
+    Required by kokoro for writing WAV audio output.
+
+  ffmpeg                     LGPL    Audio/video processing
+    https://ffmpeg.org/download.html
+    Must be in system PATH (add ffmpeg/bin to PATH after extracting).
+    Required for encoding audio and delivering it over SIP/RTP to speakers.
+
+  To install all Python packages at once:
+    pip install kokoro soundfile
+
+
+--------------------------------------------------------------------------------
+OPEN SOURCE DEPENDENCIES (NODE.JS)
+--------------------------------------------------------------------------------
+This software is built on the following open-source Node.js packages.
 Each is used under its respective license (all permissive).
 
 RUNTIME DEPENDENCIES
@@ -128,6 +177,12 @@ RUNTIME DEPENDENCIES
 
   qrcode.react               MIT     QR code generation for React
     https://github.com/zpao/qrcode.react
+
+  jsonwebtoken               MIT     JWT authentication tokens
+    https://github.com/auth0/node-jsonwebtoken
+
+  bcryptjs                   MIT     Password hashing
+    https://github.com/dcodeIO/bcrypt.js
 
   class-variance-authority   Apache  Component variant utility
     https://cva.style/
@@ -174,15 +229,16 @@ When contributing:
   - Keep the code readable and well-commented
   - Test on both desktop browsers and mobile (iOS Safari, Android Chrome)
   - Ensure changes work with the production build (start.bat), not just dev mode
-  - Do not hardcode credentials or school-specific configuration
+  - Do not hardcode credentials or site-specific configuration
 
 Areas where contributions are especially valuable:
   - Support for additional TOA speaker models or firmware versions
   - Accessibility improvements
   - Additional language translations for the UI
   - Better offline/PWA support (service worker caching)
-  - Support for speaker grouping across rooms (school-wide announcements)
+  - Support for additional TTS engines or languages
   - Volume scheduling (set volume automatically at certain times)
+  - SIP PBX integration for enterprise deployments
 
 
 --------------------------------------------------------------------------------
@@ -191,37 +247,40 @@ SECURITY NOTES
 This software is designed for CLOSED LAN use only.
 
   - Speaker passwords are stored in plain text in rooms.json
+  - User passwords are stored as bcrypt hashes in users.json
+  - JWT tokens are signed with a secret stored in the server process
   - There is no HTTPS / TLS encryption (plain HTTP over LAN)
-  - The admin password ("IPA1") is stored in the source code as plain text
   - No rate limiting or brute-force protection is implemented
 
-These are acceptable trade-offs for an internal school network tool.
+These are acceptable trade-offs for an internal network tool.
 
 DO NOT:
   - Expose this server to the public internet
-  - Use it over a VPN connection where traffic may be intercepted
-  - Store sensitive credentials other than speaker login credentials
+  - Use it over an untrusted VPN connection
+  - Store sensitive credentials beyond speaker login credentials
 
-If your school requires higher security:
+If your site requires higher security:
   - Place the server behind a reverse proxy with HTTPS (e.g. nginx + Let's Encrypt)
-  - Implement stronger admin authentication (JWT, session tokens)
-  - Encrypt rooms.json at rest
-
-For most school deployments, the default configuration is sufficient.
+  - Set a strong JWT secret via environment variable
+  - Change default admin/IT passwords immediately after installation
 
 
 --------------------------------------------------------------------------------
 ACKNOWLEDGEMENTS
 --------------------------------------------------------------------------------
-This software was built for educators and school administrators who need a
-simple, reliable way to control classroom audio without technical complexity.
+This software was built for educators, school administrators, and facility
+managers who need a simple, reliable way to control audio and make voice
+announcements without technical complexity.
 
 Thanks to:
   - The TOA Corporation for manufacturing the IP-A1 speaker series and providing
     a documented HTTP API that makes third-party integrations possible
   - TOA Canada for product support and technical resources
+  - The Kokoro TTS project for providing a free, high-quality, offline
+    voice synthesis model (Apache 2.0 license)
   - The open-source community for all the libraries that make this possible
-  - School IT administrators and teachers whose feedback shaped the design
+  - School IT administrators, teachers, and facility staff whose feedback
+    shaped the design
 
 
 ================================================================================
