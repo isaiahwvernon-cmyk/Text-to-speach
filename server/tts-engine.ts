@@ -226,17 +226,20 @@ export async function sendTtsAnnouncement(
   const wavPath = path.join(tmpDir, `tts_${Date.now()}.wav`);
 
   const ttsStart = Date.now();
+  let audioDurationSecs = 0;
   try {
     await generateSpeech(payload.text, wavPath);
     const elapsed = ((Date.now() - ttsStart) / 1000).toFixed(1);
 
-    // Get duration of generated audio
+    // Get duration of generated audio (WAV PCM 24 kHz mono)
     let durationStr = "";
     try {
       const stat = fs.statSync(wavPath);
-      // WAV PCM 24kHz mono: bytes = (size - 44) / (24000 * 2)
       const secs = (stat.size - 44) / (24000 * 2);
-      if (secs > 0) durationStr = ` (${secs.toFixed(1)}s audio)`;
+      if (secs > 0) {
+        audioDurationSecs = secs;
+        durationStr = ` (${secs.toFixed(1)}s audio)`;
+      }
     } catch {}
 
     steps.push({
@@ -259,6 +262,10 @@ export async function sendTtsAnnouncement(
     throw new Error(`TTS generation failed: ${err.message}`);
   }
 
+  // SIP session timeout = audio duration + 60 s overhead (connect + BYE + margin)
+  // Minimum 90 s so very short clips still get a reasonable window.
+  const sessionTimeoutMs = Math.max(90_000, Math.ceil(audioDurationSecs + 60) * 1000);
+
   // ── Step 2: Audio Delivery via SIP/RTP ──────────────────────────────────
   try {
     let sipResult;
@@ -268,6 +275,7 @@ export async function sendTtsAnnouncement(
         wavFile: wavPath,
         codec: payload.codec as CodecName,
         chimeDelayMs: chimeEnabled ? chimeDelay : 1200,
+        sessionTimeoutMs,
       });
     } else {
       // PG mode — send DTMF extension digits after the call is up
@@ -279,6 +287,7 @@ export async function sendTtsAnnouncement(
         dtmfDigits: ext,
         dtmfDelayMs: dtmfDelay,
         chimeDelayMs: chimeEnabled ? chimeDelay : 0,
+        sessionTimeoutMs,
       });
     }
 

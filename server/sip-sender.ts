@@ -89,6 +89,12 @@ export interface SipSendOptions {
   dtmfDelayMs?: number;
   /** ffmpeg binary name / path (default: "ffmpeg") */
   ffmpegCmd?: string;
+  /**
+   * Overall SIP session timeout in milliseconds.
+   * Should be set to (audio duration + overhead).
+   * Default: 300 000 ms (5 min) to support long announcements.
+   */
+  sessionTimeoutMs?: number;
 }
 
 export interface SipSendResult {
@@ -224,10 +230,13 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
       });
     };
 
-    // Overall timeout — 60 s covers TTS + chime + audio streaming
+    // Overall timeout — defaults to 5 min so long announcements can complete.
+    // Callers should pass sessionTimeoutMs = audioDurationMs + overhead.
+    const timeoutMs = sessionTimeoutMs ?? 300_000;
+    const timeoutSecs = Math.round(timeoutMs / 1000);
     const globalTimeout = setTimeout(() => {
-      finish(false, `SIP session timed out after 60s — speaker at ${targetIp} did not respond or complete`);
-    }, 60000);
+      finish(false, `SIP session timed out after ${timeoutSecs}s — speaker at ${targetIp} did not respond or complete`);
+    }, timeoutMs);
 
     socket.bind(0, () => {
       localSipPort = (socket.address() as dgram.AddressInfo).port;
