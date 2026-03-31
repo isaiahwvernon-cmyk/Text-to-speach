@@ -1,0 +1,110 @@
+==========================================
+  IV VoxNova -- IP-A1 Control + TTS Paging
+==========================================
+
+Node.js version: v24.14.0
+
+Installing Node dependencies... this may take a minute.
+
+
+added 526 packages, and audited 527 packages in 16s
+
+76 packages are looking for funding
+  run `npm fund` for details
+
+8 vulnerabilities (1 low, 3 moderate, 4 high)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+Checking TTS engine (Kokoro)...
+
+Python found: Python 3.12.0
+[TTS] Kokoro TTS: already installed -- OK
+
+Checking audio streaming (ffmpeg)...
+
+[AUDIO] ffmpeg 8.1-full_build-www.gyan.dev -- OK
+
+Building IV VoxNova... this takes about 30 seconds.
+
+building client...
+vite v7.3.0 building client environment for production...
+transforming (2) index.html
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1667 modules transformed.
+../dist/public/index.html                   1.80 kB │ gzip:   0.72 kB
+../dist/public/assets/index-B3rUzz86.css   86.09 kB │ gzip:  13.82 kB
+../dist/public/assets/index-c2tNvU8v.js   382.86 kB │ gzip: 114.39 kB
+✓ built in 3.68s
+building server...
+
+  dist\index.cjs  959.1kb
+
+Done in 132ms
+
+Build complete!
+
+==========================================
+  Default login credentials:
+    Admin:  admin  / admin
+    IT:     it     / it1234
+  (Change these after first login via Admin panel)
+==========================================
+
+Starting server...
+
+Open your browser to: http://localhost:5000/qr
+
+Press Ctrl+C to stop the server.
+==========================================
+
+[TTS] Python resolved to: C:\Users\ivernon\AppData\Local\Programs\Python\Python312\python.exe
+
+==========================================
+ IP-A1 Volume Controller
+==========================================
+
+Local:   http://localhost:5000
+Network: http://172.16.1.76:5000
+
+[TTS] Kokoro ready (Python: C:\Users\ivernon\AppData\Local\Programs\Python\Python312\python.exe)
+12:16:55 PM [express] GET /api/qr 304 in 11ms :: {"url":"http://192.168.14.80:5000"}
+12:16:55 PM [express] GET /api/qr/image 304 in 23ms
+12:34:29 PM [express] GET /api/auth/me 304 in 6ms :: {"id":"mn9aad024c8da2ab","username":"it","displayName":"IT Manager","role":"it","ttsEnabled":true,"assignedRoomIds":[],"presets":[]}
+12:34:29 PM [express] GET /api/system/status 200 in 2ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:34:29 PM [express] GET /api/rooms 200 in 5ms :: []
+12:34:33 PM [express] GET /api/gateways 304 in 2ms :: []
+12:34:53 PM [express] PUT /api/rooms 200 in 8ms :: {"ok":true,"count":1}
+12:34:54 PM [express] POST /api/speaker/status 200 in 135ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:34:55 PM [express] POST /api/speaker/volume/set 200 in 149ms :: {"response":{"volume":31},"result":true}
+12:34:55 PM [express] POST /api/speaker/status 200 in 220ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:34:56 PM [express] POST /api/speaker/volume/set 200 in 128ms :: {"response":{"volume":15},"result":true}
+12:34:57 PM [express] POST /api/speaker/status 200 in 241ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:34:59 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:35:17 PM [express] POST /api/speaker/volume/set 200 in 132ms :: {"response":{"volume":15},"result":true}
+12:35:17 PM [express] POST /api/speaker/status 200 in 244ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:23 PM [express] POST /api/speaker/volume/set 200 in 128ms :: {"response":{"volume":31},"result":true}
+12:35:23 PM [express] POST /api/speaker/status 200 in 248ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:24 PM [express] POST /api/speaker/status 200 in 124ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:29 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:35:31 PM [express] POST /api/speaker/volume/set 200 in 133ms :: {"response":{"volume":48},"result":true}
+12:35:31 PM [express] POST /api/speaker/status 200 in 282ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:41 PM [express] POST /api/speaker/volume/set 200 in 137ms :: {"response":{"volume":15},"result":true}
+12:35:41 PM [express] POST /api/speaker/status 200 in 240ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:47 PM [express] POST /api/speaker/mute/set 200 in 132ms :: {"response":{"mute_state":"mute"},"result":true}
+12:35:48 PM [express] POST /api/speaker/status 200 in 254ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:53 PM [express] POST /api/speaker/mute/set 200 in 135ms :: {"response":{"mute_state":"mute"},"result":true}
+12:35:53 PM [express] POST /api/speaker/status 200 in 242ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:54 PM [express] POST /api/speaker/status 200 in 129ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:35:59 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:36:24 PM [express] POST /api/speaker/status 200 in 130ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:36:30 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:36:54 PM [express] POST /api/speaker/status 200 in 131ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:37:00 PM [express] GET /api/system/status 304 in 0ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:37:24 PM [express] POST /api/speaker/status 200 in 128ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:37:30 PM [express] GET /api/system/status 304 in 2ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}
+12:37:54 PM [express] POST /api/speaker/status 200 in 127ms :: {"volume":31,"max":61,"min":0,"muteState":"unmute","connected":true}
+12:38:02 PM [express] GET /api/system/status 304 in 1ms :: {"server":"ok","tts":{"status":"ok","message":"Kokoro TTS engine ready"},"pg":"unconfigured"}

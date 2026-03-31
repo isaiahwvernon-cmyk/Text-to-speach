@@ -401,6 +401,9 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   const [syncMode, setSyncMode] = useState(room.syncMode ?? true);
   const [expanded, setExpanded] = useState(true);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  // Track optimistically-set values so status polls don't overwrite them
+  // (IP-A1 status endpoint returns stale data after set commands)
+  const optimisticOverrides = useRef<Record<string, Partial<SpeakerStatus>>>({});
 
   const fetchStatus = useCallback(async () => {
     if (!room.speakers?.length) return;
@@ -415,7 +418,10 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
     const newStatuses: Record<string, SpeakerStatus> = {};
     results.forEach((r, i) => {
       if (r.status === "fulfilled") {
-        newStatuses[room.speakers[i].id] = r.value;
+        const spkId = room.speakers[i].id;
+        const overrides = optimisticOverrides.current[spkId] ?? {};
+        // Merge: use real status for connected/model info, preserve optimistic volume/mute
+        newStatuses[spkId] = { ...r.value, ...overrides };
       }
     });
     setStatuses(newStatuses);
@@ -430,6 +436,11 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   }, [fetchStatus, room.mode]);
 
   function applyOptimistic(spkId: string, patch: Partial<SpeakerStatus>) {
+    // Persist overrides so fetchStatus polls don't clobber them
+    optimisticOverrides.current[spkId] = {
+      ...(optimisticOverrides.current[spkId] ?? {}),
+      ...patch,
+    };
     setStatuses((prev) => ({
       ...prev,
       [spkId]: { ...(prev[spkId] ?? {}), ...patch } as SpeakerStatus,
@@ -438,20 +449,25 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
 
   async function callSpeaker(spk: SpeakerType, endpoint: string, extra: Record<string, any>) {
     setPendingIds((prev) => new Set(prev).add(spk.id));
+    let failed = false;
     try {
       const res = await apiFetch(endpoint, {
         method: "POST",
         body: JSON.stringify({ ipAddress: spk.ipAddress, username: spk.username, password: spk.password, ...extra }),
       });
       if (!res.ok) {
+        failed = true;
         const err = await res.json().catch(() => ({ error: "Request failed" }));
         toast({ title: "Speaker error", description: err.error || "Failed to contact speaker", variant: "destructive" });
       }
     } catch (err: any) {
+      failed = true;
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setPendingIds((prev) => { const s = new Set(prev); s.delete(spk.id); return s; });
-      fetchStatus();
+      // Only refresh status on failure — the IP-A1 status endpoint returns stale
+      // data immediately after a set, so on success we keep the optimistic value
+      if (failed) fetchStatus();
     }
   }
 
@@ -578,7 +594,9 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
               onVolumeDec={() => decVolumeOptimistic(speaker)}
               onMuteToggle={() => {
                 const current = statuses[speaker.id]?.muteState;
-                callSpeaker(speaker, "/api/speaker/mute/set", { mute_state: current === "mute" ? "unmute" : "mute" });
+                const next = current === "mute" ? "unmute" : "mute";
+                applyOptimistic(speaker.id, { muteState: next });
+                callSpeaker(speaker, "/api/speaker/mute/set", { mute_state: next });
               }}
             />
           ))}
