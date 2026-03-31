@@ -5,7 +5,7 @@ import {
   AlertCircle, ArrowLeft, Trash2, PlusCircle, Pencil, X, Search, RefreshCw,
   CloudOff, Mic, Send, Radio, Settings, Users, ChevronDown, ChevronUp,
   Bookmark, LogOut, CheckCircle2, AlertTriangle, Wifi, WifiOff, Loader2,
-  Bell, BellOff, Zap, Globe, PhoneCall, Phone,
+  Bell, BellOff, Zap, Globe, PhoneCall, Phone, Clock, ListOrdered,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -519,6 +519,17 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
 type ResultStep = { name: string; status: "ok" | "warning" | "error" | "skipped"; detail: string };
 
 // ─── TTS Panel ────────────────────────────────────────────────────────────────
+type JobState = {
+  id: string;
+  status: "queued" | "processing" | "done" | "error";
+  progress: number;
+  progressLabel: string;
+  queuePosition: number;
+  totalInQueue: number;
+  result?: any;
+  error?: string;
+};
+
 function TtsPanel() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
@@ -530,12 +541,14 @@ function TtsPanel() {
   const [chimeEnabled, setChimeEnabled] = useState(false);
   const [chimeDelay, setChimeDelay] = useState(750);
   const [sending, setSending] = useState(false);
+  const [jobState, setJobState] = useState<JobState | null>(null);
   const [lastResult, setLastResult] = useState<{ steps: ResultStep[]; simulated?: boolean } | null>(null);
 
   const [presets, setPresets] = useState<TtsPreset[]>(user?.presets || []);
   const [addingPreset, setAddingPreset] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
   const [editPresetId, setEditPresetId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setPresets(user?.presets || []);
@@ -557,6 +570,10 @@ function TtsPanel() {
     loadContacts();
   }, []);
 
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
   const selectedContact = contacts.find((c) => c.id === selectedContactId);
 
   async function handleSend(presetText?: string) {
@@ -568,8 +585,11 @@ function TtsPanel() {
       return;
     }
 
+    if (pollRef.current) clearInterval(pollRef.current);
     setSending(true);
     setLastResult(null);
+    setJobState(null);
+
     try {
       const res = await apiFetch("/api/tts/send", {
         method: "POST",
@@ -586,15 +606,45 @@ function TtsPanel() {
       const data = await res.json();
       if (!res.ok) {
         toast({ title: "Announcement failed", description: data.error, variant: "destructive" });
+        setSending(false);
         return;
       }
 
-      setLastResult({ steps: data.steps || [], simulated: data.simulated });
-      if (!presetText) setText("");
+      const { jobId } = data;
+
+      // Poll for status every 400ms
+      await new Promise<void>((resolve) => {
+        pollRef.current = setInterval(async () => {
+          try {
+            const statusRes = await apiFetch(`/api/tts/job/${jobId}`);
+            if (!statusRes.ok) { clearInterval(pollRef.current!); setSending(false); resolve(); return; }
+            const status: JobState = await statusRes.json();
+            setJobState(status);
+
+            if (status.status === "done") {
+              clearInterval(pollRef.current!);
+              setLastResult({ steps: status.result?.steps || [], simulated: status.result?.simulated });
+              if (!presetText) setText("");
+              setSending(false);
+              resolve();
+            } else if (status.status === "error") {
+              clearInterval(pollRef.current!);
+              toast({ title: "Announcement failed", description: status.error, variant: "destructive" });
+              setSending(false);
+              resolve();
+            }
+          } catch {
+            clearInterval(pollRef.current!);
+            setSending(false);
+            resolve();
+          }
+        }, 400);
+      });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
       setSending(false);
+    } finally {
+      setJobState(null);
     }
   }
 
@@ -792,15 +842,82 @@ function TtsPanel() {
           </div>
         )}
 
+        {/* Queue / progress panel — shown while sending */}
+        {sending && jobState && (
+          <div className="rounded-2xl border-2 overflow-hidden"
+            data-testid="tts-queue-panel"
+            style={{ borderColor: jobState.status === "queued" ? "#94a3b8" : "#FF8200" }}>
+
+            {/* Queue waiting state */}
+            {jobState.status === "queued" && (
+              <div className="bg-slate-50 dark:bg-slate-700/60 px-4 py-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 flex-shrink-0 bg-slate-200 dark:bg-slate-600 rounded-xl flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-slate-500 dark:text-slate-300" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800 dark:text-white text-sm">
+                      {jobState.queuePosition === 1 ? "Starting shortly…" : `You are #${jobState.queuePosition} in the queue`}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {jobState.totalInQueue > 1
+                        ? `${jobState.totalInQueue - 1} announcement${jobState.totalInQueue - 1 !== 1 ? "s" : ""} ahead of you — your message will play automatically`
+                        : "Waiting for the system to be ready…"}
+                    </div>
+                  </div>
+                </div>
+                {/* Queue position pips */}
+                {jobState.totalInQueue > 1 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {Array.from({ length: Math.min(jobState.totalInQueue, 8) }).map((_, i) => (
+                      <div key={i} className={`h-2 flex-1 min-w-[16px] rounded-full transition-colors ${i < jobState.queuePosition - 1 ? "bg-slate-300 dark:bg-slate-500" : i === jobState.queuePosition - 1 ? "bg-[#FF8200] animate-pulse" : "bg-slate-200 dark:bg-slate-600"}`} />
+                    ))}
+                    {jobState.totalInQueue > 8 && <span className="text-xs text-slate-400">+{jobState.totalInQueue - 8}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Processing progress state */}
+            {jobState.status === "processing" && (
+              <div className="bg-[#FF8200]/5 dark:bg-[#FF8200]/10 px-4 py-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 flex-shrink-0 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 text-[#FF8200] animate-spin" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-800 dark:text-white text-sm">Sending Announcement</div>
+                    <div className="text-xs text-[#FF8200] font-medium mt-0.5 truncate">{jobState.progressLabel}</div>
+                  </div>
+                  <div className="text-sm font-bold text-[#FF8200] flex-shrink-0">{jobState.progress}%</div>
+                </div>
+                {/* Progress bar */}
+                <div className="h-2.5 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#FF8200] to-[#ffb347] rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${jobState.progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                  <span>Generating audio</span>
+                  <span>Sending</span>
+                  <span>Done</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Send button */}
         <Button
           data-testid="button-send-tts"
           onClick={() => handleSend()}
           disabled={sending || !text.trim() || !selectedContactId}
-          className="w-full bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl py-3 text-base font-semibold shadow-md shadow-orange-100"
+          className="w-full bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl py-3.5 text-base font-semibold shadow-md shadow-orange-100 disabled:opacity-60"
         >
           {sending
-            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating &amp; sending…</>
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {jobState?.status === "queued" ? `Queued (#${jobState.queuePosition})…` : "Sending…"}</>
             : <><Send className="w-4 h-4 mr-2" />Send Announcement</>}
         </Button>
 
@@ -808,7 +925,10 @@ function TtsPanel() {
         {lastResult && (
           <div className="rounded-xl border border-slate-200 dark:border-slate-600 overflow-hidden" data-testid="tts-result-panel">
             <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-600 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Announcement Result</span>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Announcement Result</span>
+              </div>
               <button onClick={() => setLastResult(null)} className="text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -831,7 +951,7 @@ function TtsPanel() {
                       <span className={`block w-2.5 h-2.5 rounded-full ${dotCls}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{step.name}</span>
                         <span className={`text-xs font-bold ${labelCls}`}>{statusLabel}</span>
                       </div>
@@ -841,6 +961,11 @@ function TtsPanel() {
                 );
               })}
             </div>
+            {lastResult.simulated && (
+              <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-700">
+                <span className="text-xs text-amber-600 dark:text-amber-400">Simulation mode — no real audio was sent</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1009,24 +1134,26 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Navbar */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#FF8200] rounded-xl flex items-center justify-center">
-              <Radio className="w-4.5 h-4.5 text-white" />
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="w-8 h-8 bg-[#FF8200] rounded-xl flex items-center justify-center flex-shrink-0">
+              <Radio className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-slate-900 dark:text-white text-lg">REPIT</span>
+            <span className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">REPIT</span>
           </div>
 
-          <SystemStatusBar />
+          <div className="hidden sm:flex flex-1 justify-center">
+            <SystemStatusBar />
+          </div>
 
-          <div className="flex items-center gap-2 relative">
+          <div className="flex items-center gap-1 sm:gap-2 relative">
             {(isAdmin || isIt) && (
               <>
                 {isAdmin && (
                   <button
                     data-testid="button-admin-panel"
                     onClick={() => navigate("/admin")}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                   >
                     <Users className="w-4 h-4" />
                     <span className="hidden sm:inline">Admin</span>
@@ -1036,7 +1163,7 @@ export default function Home() {
                   <button
                     data-testid="button-it-settings"
                     onClick={() => navigate("/it-settings")}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    className="flex items-center gap-1.5 px-2.5 py-2 sm:px-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                   >
                     <Settings className="w-4 h-4" />
                     <span className="hidden sm:inline">IT Settings</span>
@@ -1048,25 +1175,28 @@ export default function Home() {
             <button
               data-testid="button-user-menu"
               onClick={() => setShowUserMenu((v) => !v)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200"
             >
-              <div className="w-7 h-7 bg-[#FF8200]/10 rounded-full flex items-center justify-center text-[#FF8200] font-bold text-xs">
+              <div className="w-7 h-7 bg-[#FF8200]/10 rounded-full flex items-center justify-center text-[#FF8200] font-bold text-xs flex-shrink-0">
                 {user?.displayName?.[0]?.toUpperCase() || "U"}
               </div>
-              <span className="hidden sm:inline">{user?.displayName}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden sm:inline truncate max-w-[100px]">{user?.displayName}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 top-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-48 py-1 z-50">
-                <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700">
+              <div className="absolute right-0 top-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-52 py-1 z-50">
+                <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700">
                   <div className="text-sm font-semibold text-slate-800 dark:text-white">{user?.displayName}</div>
                   <div className="text-xs text-slate-400 capitalize">{user?.role}</div>
+                </div>
+                <div className="sm:hidden px-4 py-2 border-b border-slate-100 dark:border-slate-700">
+                  <SystemStatusBar />
                 </div>
                 <button
                   data-testid="button-logout"
                   onClick={() => { logout(); navigate("/login"); }}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
                   <LogOut className="w-4 h-4" /> Sign Out
                 </button>
@@ -1077,33 +1207,33 @@ export default function Home() {
       </header>
 
       {/* Main content */}
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {user?.ttsEnabled && <TtsPanel />}
 
         {/* Volume / Contacts section */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <SpeakerIcon className="w-5 h-5 text-[#FF8200]" /> Volume Control
             </h2>
-            <div className="flex items-center gap-2">
-              <div className="relative">
+            <div className="flex items-center gap-2 flex-1 justify-end">
+              <div className="relative flex-1 sm:flex-none">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   data-testid="input-search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search contacts…"
-                  className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] w-40"
+                  placeholder="Search…"
+                  className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] w-full sm:w-40"
                 />
               </div>
               {(isAdmin || isIt) && (
                 <Button
                   data-testid="button-add-room"
                   onClick={() => { setEditingContact(null); setShowAddContact(true); }}
-                  className="bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl text-sm font-semibold px-4 py-2"
+                  className="bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl text-sm font-semibold px-3 sm:px-4 py-2 flex-shrink-0"
                 >
-                  <PlusCircle className="w-4 h-4 mr-1.5" /> Add Contact
+                  <PlusCircle className="w-4 h-4 sm:mr-1.5" /><span className="hidden sm:inline">Add Contact</span>
                 </Button>
               )}
             </div>

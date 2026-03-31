@@ -32,6 +32,7 @@ import {
 } from "./db.js";
 import { signToken, requireAuth, requireRole } from "./auth.js";
 import { sendTtsAnnouncement, getTtsStatus } from "./tts-engine.js";
+import { enqueueJob, getJobStatus, getQueueLength } from "./tts-queue.js";
 
 const ROOMS_CONFIG_PATH = path.resolve(process.cwd(), "rooms.json");
 
@@ -631,9 +632,10 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // TTS SEND ROUTE
+  // TTS QUEUE — enqueue and poll
   // ─────────────────────────────────────────────────────────────────────────────
 
+  // POST /api/tts/send — validate, resolve contact, enqueue, return jobId immediately
   app.post("/api/tts/send", requireAuth, async (req, res) => {
     const auth = (req as any).auth;
     const user = (req as any).user;
@@ -648,96 +650,94 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     }
 
     const payload = parsed.data;
+    let contactName = "announcement";
 
-    try {
-      // If a contactId is provided, resolve it to TTS parameters
-      if (payload.contactId) {
-        const allContacts = readRoomsConfig();
-        const contact = allContacts.find((c: any) => c.id === payload.contactId);
+    // Build the actual run function upfront (validation only; side-effects deferred)
+    let runFn: () => Promise<any>;
 
-        if (!contact) {
-          return res.status(404).json({ error: "Contact not found" });
+    if (payload.contactId) {
+      const allContacts = readRoomsConfig();
+      const contact = allContacts.find((c: any) => c.id === payload.contactId);
+
+      if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+      if (auth.role !== "admin" && auth.role !== "it" && !user.assignedRoomIds.includes(contact.id)) {
+        return res.status(403).json({ error: "Contact not assigned to your account" });
+      }
+
+      contactName = contact.name;
+      const settings = getSettings();
+      const codec = contact.codec || payload.codec;
+
+      if (contact.mode === "pg") {
+        const targetAddress = settings.pg.address;
+        if (!targetAddress) {
+          return res.status(400).json({ error: "PG gateway address not configured in IT Settings" });
         }
-
-        // Check user has access to this contact
-        if (auth.role !== "admin" && auth.role !== "it" && !user.assignedRoomIds.includes(contact.id)) {
-          return res.status(403).json({ error: "Contact not assigned to your account" });
-        }
-
-        const settings = getSettings();
-        const codec = contact.codec || payload.codec;
-
-        if (contact.mode === "pg") {
-          // PG mode: use global PG gateway + contact's extension
-          const targetAddress = settings.pg.address;
-          if (!targetAddress) {
-            return res.status(400).json({ error: "PG gateway address not configured in IT Settings" });
-          }
-          const pgExtension = contact.pgExtension || settings.pg.defaultExtension;
-          const ttsData = {
-            ...payload,
-            mode: "pg" as const,
-            targetAddress,
-            pgExtension,
-            codec,
-          };
+        const pgExtension = contact.pgExtension || settings.pg.defaultExtension;
+        const ttsData = { ...payload, mode: "pg" as const, targetAddress, pgExtension, codec };
+        runFn = async () => {
           const result = await sendTtsAnnouncement(ttsData, auth.username);
           addLog("tts", `TTS via PG to "${contact.name}" by ${auth.username}`, auth.username, payload.text.slice(0, 100));
-          return res.json(result);
-        } else {
-          // Direct mode: send to all speakers
-          const speakers = contact.speakers || [];
-          if (speakers.length === 0) {
-            return res.status(400).json({ error: "Contact has no speakers configured" });
-          }
+          return result;
+        };
+      } else {
+        const speakers = contact.speakers || [];
+        if (speakers.length === 0) {
+          return res.status(400).json({ error: "Contact has no speakers configured" });
+        }
 
+        runFn = async () => {
           if (speakers.length === 1) {
-            const ttsData = {
-              ...payload,
-              mode: "direct" as const,
-              targetAddress: speakers[0].ipAddress,
-              codec,
-            };
+            const ttsData = { ...payload, mode: "direct" as const, targetAddress: speakers[0].ipAddress, codec };
             const result = await sendTtsAnnouncement(ttsData, auth.username);
             addLog("tts", `TTS direct to "${contact.name}" by ${auth.username}`, auth.username, payload.text.slice(0, 100));
-            return res.json(result);
+            return result;
           }
-
-          // Multiple speakers: send in parallel, combine results
+          // Multiple speakers in parallel
           const results = await Promise.allSettled(
             speakers.map((spk: any) =>
-              sendTtsAnnouncement(
-                { ...payload, mode: "direct" as const, targetAddress: spk.ipAddress, codec },
-                auth.username
-              )
+              sendTtsAnnouncement({ ...payload, mode: "direct" as const, targetAddress: spk.ipAddress, codec }, auth.username)
             )
           );
-
           const combinedSteps: any[] = [];
           results.forEach((r, i) => {
             const label = speakers[i].label || `Speaker ${i + 1}`;
             if (r.status === "fulfilled") {
-              combinedSteps.push(
-                ...(r.value.steps || []).map((s: any) => ({ ...s, name: `[${label}] ${s.name}` }))
-              );
+              combinedSteps.push(...(r.value.steps || []).map((s: any) => ({ ...s, name: `[${label}] ${s.name}` })));
             } else {
               combinedSteps.push({ name: `[${label}] Send`, status: "error", detail: r.reason?.message || "Failed" });
             }
           });
-
           addLog("tts", `TTS direct to "${contact.name}" (${speakers.length} speakers) by ${auth.username}`, auth.username, payload.text.slice(0, 100));
-          return res.json({ steps: combinedSteps, simulated: results.some((r) => r.status === "fulfilled" && (r.value as any).simulated) });
-        }
+          return { steps: combinedSteps, simulated: results.some((r) => r.status === "fulfilled" && (r.value as any).simulated) };
+        };
       }
-
-      // Fallback: legacy mode (direct targetAddress provided)
-      const result = await sendTtsAnnouncement(payload, auth.username);
-      addLog("tts", `TTS announcement sent by ${auth.username}`, auth.username, payload.text.slice(0, 100));
-      res.json(result);
-    } catch (err: any) {
-      addLog("error", `TTS announcement failed: ${err.message}`, auth.username);
-      res.status(500).json({ error: err.message || "TTS announcement failed" });
+    } else {
+      // Legacy fallback
+      runFn = async () => {
+        const result = await sendTtsAnnouncement(payload, auth.username);
+        addLog("tts", `TTS announcement sent by ${auth.username}`, auth.username, payload.text.slice(0, 100));
+        return result;
+      };
     }
+
+    const jobId = enqueueJob({
+      userId: user.id,
+      username: auth.username,
+      contactName,
+      textPreview: payload.text.slice(0, 80),
+      runFn,
+    });
+
+    return res.status(202).json({ jobId, queueLength: getQueueLength() });
+  });
+
+  // GET /api/tts/job/:jobId — poll for queue position + progress
+  app.get("/api/tts/job/:jobId", requireAuth, (req, res) => {
+    const status = getJobStatus(req.params.jobId);
+    if (!status) return res.status(404).json({ error: "Job not found" });
+    res.json(status);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
