@@ -10,6 +10,7 @@ import AdminPage from "@/pages/admin";
 import ItSettingsPage from "@/pages/it-settings";
 import ConnectPage from "@/pages/connect";
 import QrPage from "@/pages/qr";
+import RecoveryPage from "@/pages/recovery";
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ component: Component, roles }: {
@@ -27,6 +28,8 @@ function ProtectedRoute({ component: Component, roles }: {
   }
 
   if (!user) return <Redirect to="/login" />;
+  // Recovery users can only access the recovery page (avoid loop when already on /recovery)
+  if (user.role === "recovery" && !roles?.includes("recovery")) return <Redirect to="/recovery" />;
   if (roles && !roles.includes(user.role)) return <Redirect to="/" />;
 
   return <Component />;
@@ -43,6 +46,7 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
     );
   }
 
+  if (user && user.role === "recovery") return <Redirect to="/recovery" />;
   if (user) return <Redirect to="/" />;
   return <Component />;
 }
@@ -65,6 +69,9 @@ function Router() {
       </Route>
       <Route path="/connect">
         <ProtectedRoute component={ConnectPage} />
+      </Route>
+      <Route path="/recovery">
+        <ProtectedRoute component={RecoveryPage} roles={["recovery"]} />
       </Route>
       <Route component={NotFound} />
     </Switch>

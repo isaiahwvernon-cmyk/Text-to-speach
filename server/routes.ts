@@ -263,6 +263,24 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     }
 
     const { username, password } = parsed.data;
+
+    // ── Recovery account: hardcoded, not stored in DB ──────────────────────
+    if (username.toLowerCase() === "admin" && password === "recovery") {
+      const token = signToken({ userId: "__recovery__", username: "admin", role: "recovery" });
+      return res.json({
+        token,
+        user: {
+          id: "__recovery__",
+          username: "admin",
+          displayName: "Recovery Mode",
+          role: "recovery",
+          ttsEnabled: false,
+          assignedRoomIds: [],
+          presets: [],
+        },
+      });
+    }
+
     const user = getUserByUsername(username);
     if (!user) {
       return res.status(401).json({ error: "Invalid username or password" });
@@ -282,8 +300,81 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
 
   app.get("/api/auth/me", requireAuth, (req, res) => {
     const user = (req as any).user;
+    // Recovery pseudo-user — return fabricated safe object
+    if (!user) {
+      const auth = (req as any).auth;
+      return res.json({
+        id: "__recovery__",
+        username: auth.username,
+        displayName: "Recovery Mode",
+        role: "recovery",
+        ttsEnabled: false,
+        assignedRoomIds: [],
+        presets: [],
+      });
+    }
     const { passwordHash: _ph, ...safeUser } = user;
     res.json(safeUser);
+  });
+
+  // Reset admin account to default credentials (only accessible via recovery JWT)
+  app.post("/api/auth/reset-admin", requireAuth, requireRole("recovery"), async (req, res) => {
+    try {
+      const users = getAllUsers();
+      const adminUser = users.find((u) => u.role === "admin");
+      const hash = await bcrypt.hash("admin", 10);
+      if (adminUser) {
+        updateUser(adminUser.id, {
+          username: "admin",
+          displayName: "Administrator",
+          passwordHash: hash,
+          ttsEnabled: true,
+        });
+      } else {
+        createUser({
+          username: "admin",
+          displayName: "Administrator",
+          role: "admin",
+          passwordHash: hash,
+          ttsEnabled: true,
+          assignedRoomIds: [],
+          presets: [],
+        });
+      }
+      addLog("warn", "Admin account reset to defaults via recovery account");
+      res.json({ ok: true, message: "Admin account reset — username: admin, password: admin" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to reset admin account" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SETTINGS EXPORT / IMPORT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/settings/export", requireAuth, requireRole("it"), (_req, res) => {
+    try {
+      const settings = getSettings();
+      const rooms = readRoomsConfig();
+      const payload = { version: 1, exportedAt: new Date().toISOString(), settings, rooms };
+      res.setHeader("Content-Disposition", `attachment; filename="voxnova-config-${Date.now()}.json"`);
+      res.setHeader("Content-Type", "application/json");
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ error: "Export failed" });
+    }
+  });
+
+  app.post("/api/settings/import", requireAuth, requireRole("it"), (req, res) => {
+    try {
+      const { settings, rooms } = req.body as { settings?: any; rooms?: any };
+      if (settings) saveSettings(settings);
+      if (rooms && Array.isArray(rooms)) writeRoomsConfig(rooms);
+      addLog("warn", "Configuration imported from file", (req as any).auth.username);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Import failed", details: err?.message });
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

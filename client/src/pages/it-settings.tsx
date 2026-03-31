@@ -9,6 +9,7 @@ import type { SystemSettings, LogEntry, PgGateway } from "@shared/schema";
 import {
   ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
   Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight, Plus,
+  Download, Upload,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -121,6 +122,54 @@ export default function ItSettingsPage() {
     } catch {}
   }
 
+  async function handleExport() {
+    try {
+      const res = await apiFetch("/api/settings/export");
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `voxnova-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Configuration exported" });
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e.message, variant: "destructive" });
+    }
+  }
+
+  function handleImportClick() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (!payload.settings && !payload.rooms) {
+          throw new Error("Invalid config file — missing settings or rooms.");
+        }
+        if (!confirm("This will replace all current settings and contacts. Continue?")) return;
+        const res = await apiFetch("/api/settings/import", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Import failed");
+        }
+        toast({ title: "Configuration imported", description: "Reloading settings…" });
+        await loadAll();
+      } catch (e: any) {
+        toast({ title: "Import failed", description: e.message, variant: "destructive" });
+      }
+    };
+    input.click();
+  }
+
   function updateSip(key: string, value: any) {
     setSettings((s) => s ? { ...s, sip: { ...s.sip, [key]: value } } : s);
   }
@@ -171,13 +220,30 @@ export default function ItSettingsPage() {
               <div className="text-xs text-slate-400">System configuration &amp; diagnostics</div>
             </div>
           </div>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex gap-2 flex-wrap justify-end">
             <button
               data-testid="button-refresh-settings"
               onClick={loadAll}
               className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+              title="Refresh"
             >
               <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              data-testid="button-export-config"
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Export configuration"
+            >
+              <Download className="w-4 h-4" /> Export
+            </button>
+            <button
+              data-testid="button-import-config"
+              onClick={handleImportClick}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Import configuration"
+            >
+              <Upload className="w-4 h-4" /> Import
             </button>
             <Button
               data-testid="button-save-settings"
@@ -360,7 +426,7 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-chime-default"
                     onClick={() => updateTts("chimeEnabled", !settings.tts.chimeEnabled)}
-                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.tts.chimeEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
                   </button>
@@ -410,7 +476,7 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-logging"
                     onClick={() => updateLogging("enabled", !settings.logging.enabled)}
-                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.logging.enabled ? "translate-x-6" : "translate-x-0.5"}`} />
                   </button>

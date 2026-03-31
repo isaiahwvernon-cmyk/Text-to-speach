@@ -493,6 +493,33 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
     await Promise.allSettled(room.speakers.map((s) => callSpeaker(s, endpoint, extra)));
   }
 
+  function setAllVolumeOptimistic(volume: number) {
+    room.speakers.forEach((s) => applyOptimistic(s.id, { volume }));
+    callAll("/api/speaker/volume/set", { volume });
+  }
+
+  function incAllVolumeOptimistic() {
+    room.speakers.forEach((s) => {
+      const cur = statuses[s.id]?.volume ?? 31;
+      const max = statuses[s.id]?.max ?? 61;
+      applyOptimistic(s.id, { volume: Math.min(cur + 1, max) });
+    });
+    callAll("/api/speaker/volume/increment", {});
+  }
+
+  function decAllVolumeOptimistic() {
+    room.speakers.forEach((s) => {
+      const cur = statuses[s.id]?.volume ?? 31;
+      applyOptimistic(s.id, { volume: Math.max(cur - 1, 0) });
+    });
+    callAll("/api/speaker/volume/decrement", {});
+  }
+
+  function setAllMuteOptimistic(state: "mute" | "unmute") {
+    room.speakers.forEach((s) => applyOptimistic(s.id, { muteState: state }));
+    callAll("/api/speaker/mute/set", { mute_state: state });
+  }
+
   // PG contact: just show a card with extension info
   if (room.mode === "pg") {
     return (
@@ -570,15 +597,15 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
             <div className="bg-[#FF8200]/5 border border-[#FF8200]/20 rounded-xl p-3 mb-1">
               <div className="text-xs font-semibold text-[#FF8200] mb-2">All Speakers (Sync Mode)</div>
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => callAll("/api/speaker/volume/decrement", {})} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Minus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
-                <button onClick={() => callAll("/api/speaker/volume/increment", {})} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Plus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
+                <button onClick={decAllVolumeOptimistic} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Minus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
+                <button onClick={incAllVolumeOptimistic} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl"><Plus className="w-4 h-4 text-slate-600 dark:text-slate-300" /></button>
                 {[{ label: "Low", value: 15 }, { label: "Normal", value: 31 }, { label: "Loud", value: 48 }].map((p) => (
-                  <button key={p.label} onClick={() => callAll("/api/speaker/volume/set", { volume: p.value })} className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-[#FF8200]/10 hover:text-[#FF8200] hover:border-[#FF8200]/30 transition-colors">
+                  <button key={p.label} onClick={() => setAllVolumeOptimistic(p.value)} className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-[#FF8200]/10 hover:text-[#FF8200] hover:border-[#FF8200]/30 transition-colors">
                     {p.label}
                   </button>
                 ))}
-                <button onClick={() => callAll("/api/speaker/mute/set", { mute_state: "mute" })} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><VolumeX className="w-4 h-4" /></button>
-                <button onClick={() => callAll("/api/speaker/mute/set", { mute_state: "unmute" })} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><Volume2 className="w-4 h-4" /></button>
+                <button onClick={() => setAllMuteOptimistic("mute")} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><VolumeX className="w-4 h-4" /></button>
+                <button onClick={() => setAllMuteOptimistic("unmute")} className="p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500"><Volume2 className="w-4 h-4" /></button>
               </div>
             </div>
           )}
@@ -893,7 +920,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                 data-testid="button-chime-toggle"
                 type="button"
                 onClick={() => setChimeEnabled((v) => !v)}
-                className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
               >
                 <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${chimeEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
               </button>

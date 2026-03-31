@@ -58,7 +58,7 @@ export const speakerStatusSchema = z.object({
 export type SpeakerStatus = z.infer<typeof speakerStatusSchema>;
 
 // ─── Auth / Users ─────────────────────────────────────────────────────────────
-export const userRoleSchema = z.enum(["user", "admin", "it"]);
+export const userRoleSchema = z.enum(["user", "admin", "it", "recovery"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
 export const ttsPresetSchema = z.object({

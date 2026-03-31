@@ -45,6 +45,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
+  // Recovery pseudo-user is not stored in the database
+  if (payload.role === "recovery" && payload.userId === "__recovery__") {
+    (req as any).auth = payload;
+    (req as any).user = null;
+    next();
+    return;
+  }
+
   const user = getUserById(payload.userId);
   if (!user) {
     res.status(401).json({ error: "User not found" });

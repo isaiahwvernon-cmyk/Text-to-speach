@@ -159,7 +159,7 @@ function UserFormDialog({ contacts, onSave, onCancel, editUser }: {
               type="button"
               data-testid="toggle-tts-enabled"
               onClick={() => setTtsEnabled((v) => !v)}
-              className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${ttsEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+              className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${ttsEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
             >
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ttsEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
             </button>
