@@ -413,7 +413,7 @@ export default function ItSettingsPage() {
                     <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Default DTMF Delay (PG mode)</label>
                     <span className="text-sm font-bold text-[#FF8200]">{settings.tts.dtmfDelayMs}ms</span>
                   </div>
-                  <input data-testid="input-default-dtmf-delay" type="range" min={200} max={2000} step={50} value={settings.tts.dtmfDelayMs} onChange={(e) => updateTts("dtmfDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" />
+                  <div className="px-1"><input data-testid="input-default-dtmf-delay" type="range" min={200} max={2000} step={50} value={settings.tts.dtmfDelayMs} onChange={(e) => updateTts("dtmfDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" /></div>
                   <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>200ms (fast)</span><span>2000ms (slow)</span></div>
                 </div>
 
@@ -438,7 +438,7 @@ export default function ItSettingsPage() {
                       <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Default Post-Chime Delay</label>
                       <span className="text-sm font-bold text-[#FF8200]">{settings.tts.chimeDelayMs}ms</span>
                     </div>
-                    <input data-testid="input-default-chime-delay" type="range" min={300} max={10000} step={50} value={settings.tts.chimeDelayMs} onChange={(e) => updateTts("chimeDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" />
+                    <div className="px-1"><input data-testid="input-default-chime-delay" type="range" min={300} max={10000} step={50} value={settings.tts.chimeDelayMs} onChange={(e) => updateTts("chimeDelayMs", Number(e.target.value))} className="w-full accent-[#FF8200]" /></div>
                     <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>300ms</span><span>10000ms</span></div>
                   </div>
                 )}
@@ -449,7 +449,7 @@ export default function ItSettingsPage() {
                       <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Voice Speed</label>
                       <span className="text-sm font-bold text-[#FF8200]">{settings.tts.voiceSpeed.toFixed(1)}x</span>
                     </div>
-                    <input data-testid="input-voice-speed" type="range" min={0.5} max={2.0} step={0.1} value={settings.tts.voiceSpeed} onChange={(e) => updateTts("voiceSpeed", parseFloat(e.target.value))} className="w-full accent-[#FF8200]" />
+                    <div className="px-1"><input data-testid="input-voice-speed" type="range" min={0.5} max={2.0} step={0.1} value={settings.tts.voiceSpeed} onChange={(e) => updateTts("voiceSpeed", parseFloat(e.target.value))} className="w-full accent-[#FF8200]" /></div>
                     <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>0.5x</span><span>2.0x</span></div>
                   </div>
                   <div>
@@ -457,7 +457,7 @@ export default function ItSettingsPage() {
                       <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Voice Pitch</label>
                       <span className="text-sm font-bold text-[#FF8200]">{settings.tts.voicePitch.toFixed(1)}x</span>
                     </div>
-                    <input data-testid="input-voice-pitch" type="range" min={0.5} max={2.0} step={0.1} value={settings.tts.voicePitch} onChange={(e) => updateTts("voicePitch", parseFloat(e.target.value))} className="w-full accent-[#FF8200]" />
+                    <div className="px-1"><input data-testid="input-voice-pitch" type="range" min={0.5} max={2.0} step={0.1} value={settings.tts.voicePitch} onChange={(e) => updateTts("voicePitch", parseFloat(e.target.value))} className="w-full accent-[#FF8200]" /></div>
                     <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>0.5x</span><span>2.0x</span></div>
                   </div>
                 </div>

@@ -114,6 +114,7 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     dtmfDigits,
     dtmfDelayMs = 500,
     ffmpegCmd = "ffmpeg",
+    sessionTimeoutMs,
   } = opts;
 
   const codecInfo = CODECS[codec];

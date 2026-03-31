@@ -355,7 +355,7 @@ function SpeakerCard({ speaker, status, pending, onVolumeSet, onVolumeInc, onVol
             <button onClick={onVolumeDec} className="p-1.5 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg hover:bg-slate-50">
               <Minus className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
             </button>
-            <div className="flex-1 relative">
+            <div className="flex-1 relative px-1">
               <input
                 type="range"
                 min={0}
@@ -898,16 +898,18 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                 <label className="text-sm font-medium text-slate-600 dark:text-slate-300">DTMF Delay</label>
                 <span className="text-sm font-bold text-[#FF8200]">{dtmfDelay}ms</span>
               </div>
-              <input
-                data-testid="input-dtmf-delay"
-                type="range"
-                min={200}
-                max={2000}
-                step={50}
-                value={dtmfDelay}
-                onChange={(e) => setDtmfDelay(Number(e.target.value))}
-                className="w-full accent-[#FF8200]"
-              />
+              <div className="px-1">
+                <input
+                  data-testid="input-dtmf-delay"
+                  type="range"
+                  min={200}
+                  max={2000}
+                  step={50}
+                  value={dtmfDelay}
+                  onChange={(e) => setDtmfDelay(Number(e.target.value))}
+                  className="w-full accent-[#FF8200]"
+                />
+              </div>
               <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>200ms</span><span>2000ms</span></div>
             </div>
 
@@ -932,16 +934,18 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                   <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Post-Chime Delay</label>
                   <span className="text-sm font-bold text-[#FF8200]">{chimeDelay}ms</span>
                 </div>
-                <input
-                  data-testid="input-chime-delay"
-                  type="range"
-                  min={300}
-                  max={10000}
-                  step={50}
-                  value={chimeDelay}
-                  onChange={(e) => setChimeDelay(Number(e.target.value))}
-                  className="w-full accent-[#FF8200]"
-                />
+                <div className="px-1">
+                  <input
+                    data-testid="input-chime-delay"
+                    type="range"
+                    min={300}
+                    max={10000}
+                    step={50}
+                    value={chimeDelay}
+                    onChange={(e) => setChimeDelay(Number(e.target.value))}
+                    className="w-full accent-[#FF8200]"
+                  />
+                </div>
                 <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>300ms</span><span>10000ms</span></div>
               </div>
             )}
