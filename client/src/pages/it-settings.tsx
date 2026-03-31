@@ -426,9 +426,9 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-chime-default"
                     onClick={() => updateTts("chimeEnabled", !settings.tts.chimeEnabled)}
-                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${settings.tts.chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.tts.chimeEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.tts.chimeEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
                   </button>
                 </div>
 
@@ -476,9 +476,9 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-logging"
                     onClick={() => updateLogging("enabled", !settings.logging.enabled)}
-                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative overflow-hidden ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.logging.enabled ? "translate-x-6" : "translate-x-0.5"}`} />
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.logging.enabled ? "translate-x-5" : "translate-x-0.5"}`} />
                   </button>
                 </div>
                 <Field label="Retain Logs (days)">
