@@ -224,13 +224,11 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   app.get("/api/system/status", requireAuth, (_req, res) => {
     const ttsStatus = getTtsStatus();
     const settings = getSettings();
-    const sipConfigured = !!(settings.sip.serverAddress && settings.sip.username);
-    const pgConfigured = !!(settings.pg.address);
+    const pgConfigured = settings.pgs.length > 0 && settings.pgs.some((g: any) => g.address);
 
     res.json({
       server: "ok",
       tts: ttsStatus,
-      sip: sipConfigured ? "ok" : "unconfigured",
       pg: pgConfigured ? "ok" : "unconfigured",
     });
   });
@@ -670,11 +668,15 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
       const codec = contact.codec || payload.codec;
 
       if (contact.mode === "pg") {
-        const targetAddress = settings.pg.address;
-        if (!targetAddress) {
-          return res.status(400).json({ error: "PG gateway address not configured in IT Settings" });
+        // Find the specific PG gateway: prefer contact.pgId, fall back to first configured gateway
+        const gateway = (contact.pgId
+          ? settings.pgs.find((g: any) => g.id === contact.pgId)
+          : undefined) || settings.pgs.find((g: any) => g.address);
+        if (!gateway || !gateway.address) {
+          return res.status(400).json({ error: "No Paging Gateway configured in IT Settings" });
         }
-        const pgExtension = contact.pgExtension || settings.pg.defaultExtension;
+        const targetAddress = gateway.address;
+        const pgExtension = contact.pgExtension || gateway.defaultExtension;
         const ttsData = { ...payload, mode: "pg" as const, targetAddress, pgExtension, codec };
         runFn = async () => {
           const result = await sendTtsAnnouncement(ttsData, auth.username);
@@ -743,6 +745,12 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   // ─────────────────────────────────────────────────────────────────────────────
   // SETTINGS ROUTES (IT only)
   // ─────────────────────────────────────────────────────────────────────────────
+
+  // List of PG gateways (admin+it for managing contacts)
+  app.get("/api/gateways", requireAuth, requireRole("admin", "it"), (_req, res) => {
+    const settings = getSettings();
+    res.json(settings.pgs);
+  });
 
   app.get("/api/settings", requireAuth, requireRole("admin", "it"), (_req, res) => {
     const settings = getSettings();

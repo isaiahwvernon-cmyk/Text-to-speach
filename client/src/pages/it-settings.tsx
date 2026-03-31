@@ -5,10 +5,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { SystemSettings, LogEntry } from "@shared/schema";
+import type { SystemSettings, LogEntry, PgGateway } from "@shared/schema";
 import {
   ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
-  Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight,
+  Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight, Plus,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -124,8 +124,16 @@ export default function ItSettingsPage() {
   function updateSip(key: string, value: any) {
     setSettings((s) => s ? { ...s, sip: { ...s.sip, [key]: value } } : s);
   }
-  function updatePg(key: string, value: any) {
-    setSettings((s) => s ? { ...s, pg: { ...s.pg, [key]: value } } : s);
+  function addPg() {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newGw: PgGateway = { id, name: "New Gateway", address: "", port: 5060, defaultExtension: "" };
+    setSettings((s) => s ? { ...s, pgs: [...(s.pgs ?? []), newGw] } : s);
+  }
+  function updatePgGateway(id: string, key: string, value: any) {
+    setSettings((s) => s ? { ...s, pgs: (s.pgs ?? []).map((g) => g.id === id ? { ...g, [key]: value } : g) } : s);
+  }
+  function removePg(id: string) {
+    setSettings((s) => s ? { ...s, pgs: (s.pgs ?? []).filter((g) => g.id !== id) } : s);
   }
   function updateTts(key: string, value: any) {
     setSettings((s) => s ? { ...s, tts: { ...s.tts, [key]: value } } : s);
@@ -184,16 +192,14 @@ export default function ItSettingsPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-5">
-        {/* System Status */}
+        {/* System Status — 3 cards: Server, TTS Engine, Paging Gateway */}
         {status && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {[
               { key: "server", label: "Server" },
               { key: "tts", label: "TTS Engine" },
-              { key: "sip", label: "SIP" },
-              { key: "pg", label: "PG Gateway" },
+              { key: "pg", label: "Paging Gateway" },
             ].map(({ key, label }) => {
-              // tts field is an object {status, message}; others are plain strings
               const raw = status[key];
               const statusStr: string = raw && typeof raw === "object" ? (raw as any).status : (raw as string);
               const ttsMsg: string | undefined = key === "tts" && raw && typeof raw === "object" ? (raw as any).message : undefined;
@@ -223,24 +229,80 @@ export default function ItSettingsPage() {
           <>
             {/* SIP Settings — hidden until SIP PBX integration is needed */}
 
-            {/* PG Settings */}
-            <Section title="IP-A1PG Gateway" icon={Radio}>
+            {/* Paging Gateways */}
+            <Section title="Paging Gateways" icon={Radio}>
               <div className="space-y-4">
                 <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3 text-xs text-orange-700 dark:text-orange-400 flex gap-2">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>The IP-A1PG converts SIP audio to multicast. Users can override the extension per announcement, or this default will be used.</span>
+                  <span>Paging Gateways convert TTS audio to multicast zones. Add one or more gateways and assign them to contacts. The default extension is used when a contact doesn't specify one.</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="PG Server Address">
-                    <input data-testid="input-pg-address" value={settings.pg.address} onChange={(e) => updatePg("address", e.target.value)} placeholder="192.168.1.50" className={INPUT_CLS} />
-                  </Field>
-                  <Field label="PG SIP Port">
-                    <input data-testid="input-pg-port" type="number" value={settings.pg.port} onChange={(e) => updatePg("port", Number(e.target.value))} className={INPUT_CLS} />
-                  </Field>
-                </div>
-                <Field label="Default Zone Extension" hint="Default DTMF zone (users can override per announcement)">
-                  <input data-testid="input-pg-extension" value={settings.pg.defaultExtension} onChange={(e) => updatePg("defaultExtension", e.target.value)} placeholder="e.g., 1 for Zone 1" className={INPUT_CLS} />
-                </Field>
+
+                {(settings.pgs ?? []).length === 0 && (
+                  <div className="text-center py-6 text-slate-400 text-sm">No gateways configured. Add one below.</div>
+                )}
+
+                {(settings.pgs ?? []).map((gw, idx) => (
+                  <div key={gw.id} className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3 bg-slate-50 dark:bg-slate-700/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Gateway {idx + 1}</span>
+                      <button
+                        type="button"
+                        data-testid={`button-remove-pg-${gw.id}`}
+                        onClick={() => removePg(gw.id)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <Field label="Gateway Name">
+                      <input
+                        data-testid={`input-pg-name-${gw.id}`}
+                        value={gw.name}
+                        onChange={(e) => updatePgGateway(gw.id, "name", e.target.value)}
+                        placeholder="e.g. Main Building, Floor 2…"
+                        className={INPUT_CLS}
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="IP Address">
+                        <input
+                          data-testid={`input-pg-address-${gw.id}`}
+                          value={gw.address}
+                          onChange={(e) => updatePgGateway(gw.id, "address", e.target.value)}
+                          placeholder="192.168.1.50"
+                          className={INPUT_CLS}
+                        />
+                      </Field>
+                      <Field label="SIP Port">
+                        <input
+                          data-testid={`input-pg-port-${gw.id}`}
+                          type="number"
+                          value={gw.port}
+                          onChange={(e) => updatePgGateway(gw.id, "port", Number(e.target.value))}
+                          className={INPUT_CLS}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Default Zone Extension" hint="Used when a contact doesn't specify an extension">
+                      <input
+                        data-testid={`input-pg-ext-${gw.id}`}
+                        value={gw.defaultExtension}
+                        onChange={(e) => updatePgGateway(gw.id, "defaultExtension", e.target.value)}
+                        placeholder="e.g. 1"
+                        className={INPUT_CLS}
+                      />
+                    </Field>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  data-testid="button-add-pg"
+                  onClick={addPg}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-[#FF8200] hover:text-[#FF8200] transition-colors text-sm font-medium"
+                >
+                  <Plus className="w-4 h-4" /> Add Paging Gateway
+                </button>
               </div>
             </Section>
 
@@ -332,7 +394,7 @@ export default function ItSettingsPage() {
             {/* Logging Settings */}
             <Section title="Logging" icon={FileText} defaultOpen={false}>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-sm font-medium text-slate-600 dark:text-slate-300">Enable Logging</div>
                     <div className="text-xs text-slate-400">Record system events, TTS, and SIP activity</div>
@@ -341,7 +403,7 @@ export default function ItSettingsPage() {
                     type="button"
                     data-testid="toggle-logging"
                     onClick={() => updateLogging("enabled", !settings.logging.enabled)}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${settings.logging.enabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.logging.enabled ? "translate-x-6" : "translate-x-0.5"}`} />
                   </button>

@@ -80,11 +80,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
     fromExtension: "",
     realm: "",
   },
-  pg: {
-    address: "",
-    port: 5060,
-    defaultExtension: "",
-  },
+  pgs: [],
   tts: {
     defaultCodec: "PCMU",
     defaultMode: "direct",
@@ -104,9 +100,16 @@ export function getSettings(): SystemSettings {
   try {
     if (!fs.existsSync(SETTINGS_FILE)) return DEFAULT_SETTINGS;
     const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+
+    // Migrate from old single `pg` object to `pgs` array
+    let pgs = Array.isArray(raw.pgs) ? raw.pgs : [];
+    if (pgs.length === 0 && raw.pg && raw.pg.address) {
+      pgs = [{ id: "default", name: "Main Gateway", ...raw.pg }];
+    }
+
     return {
       sip: { ...DEFAULT_SETTINGS.sip, ...raw.sip },
-      pg: { ...DEFAULT_SETTINGS.pg, ...raw.pg },
+      pgs,
       tts: { ...DEFAULT_SETTINGS.tts, ...raw.tts },
       logging: { ...DEFAULT_SETTINGS.logging, ...raw.logging },
     };

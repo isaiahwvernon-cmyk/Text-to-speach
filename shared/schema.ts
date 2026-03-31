@@ -24,6 +24,7 @@ export const contactSchema = z.object({
   mode: z.enum(["direct", "pg"]).default("direct"),
   speakers: z.array(speakerSchema).default([]),
   pgExtension: z.string().default(""),
+  pgId: z.string().optional(),
   codec: z.enum(["PCMU", "PCMA", "G722"]).optional(),
   syncMode: z.boolean().default(true),
 });
@@ -121,11 +122,18 @@ export const sipSettingsSchema = z.object({
 });
 export type SipSettings = z.infer<typeof sipSettingsSchema>;
 
-export const pgSettingsSchema = z.object({
+// Single PG gateway entry
+export const pgGatewaySchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, "Name required"),
   address: z.string().default(""),
   port: z.number().int().min(1).max(65535).default(5060),
   defaultExtension: z.string().default(""),
 });
+export type PgGateway = z.infer<typeof pgGatewaySchema>;
+
+// Keep for backward compat
+export const pgSettingsSchema = pgGatewaySchema.omit({ id: true, name: true });
 export type PgSettings = z.infer<typeof pgSettingsSchema>;
 
 export const ttsSettingsSchema = z.object({
@@ -147,7 +155,7 @@ export type LoggingSettings = z.infer<typeof loggingSettingsSchema>;
 
 export const systemSettingsSchema = z.object({
   sip: sipSettingsSchema.default({}),
-  pg: pgSettingsSchema.default({}),
+  pgs: z.array(pgGatewaySchema).default([]),
   tts: ttsSettingsSchema.default({}),
   logging: loggingSettingsSchema.default({}),
 });
@@ -184,8 +192,10 @@ export type LogEntry = z.infer<typeof logEntrySchema>;
 // ─── System Status ────────────────────────────────────────────────────────────
 export const systemStatusSchema = z.object({
   server: z.enum(["ok", "error"]),
-  tts: z.enum(["ok", "unavailable", "checking"]),
-  sip: z.enum(["ok", "unconfigured", "error", "checking"]),
+  tts: z.union([
+    z.enum(["ok", "unavailable", "checking"]),
+    z.object({ status: z.string(), message: z.string().optional() }),
+  ]),
   pg: z.enum(["ok", "unconfigured", "error", "checking"]),
 });
 export type SystemStatus = z.infer<typeof systemStatusSchema>;

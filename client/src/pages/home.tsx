@@ -73,10 +73,16 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
   const [name, setName] = useState(editContact?.name || "");
   const [mode, setMode] = useState<"direct" | "pg">(editContact?.mode || "direct");
   const [pgExtension, setPgExtension] = useState(editContact?.pgExtension || "");
+  const [pgId, setPgId] = useState((editContact as any)?.pgId || "");
   const [codec, setCodec] = useState<string>(editContact?.codec || "");
   const [speakers, setSpeakers] = useState<SpeakerType[]>(
     editContact?.speakers?.length ? editContact.speakers : [blankSpeaker(0)]
   );
+  const [gateways, setGateways] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiFetch("/api/gateways").then((r) => r.ok ? r.json() : []).then(setGateways).catch(() => {});
+  }, []);
 
   const updateSpeaker = (index: number, field: keyof SpeakerType, value: string) => {
     setSpeakers((prev) => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
@@ -105,9 +111,10 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
         mode: "pg",
         speakers: [],
         pgExtension: pgExtension.trim(),
+        pgId: pgId || undefined,
         codec: codec as Codec || undefined,
         syncMode: false,
-      });
+      } as Contact);
     }
   };
 
@@ -141,7 +148,7 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: "direct", label: "Direct SIP", desc: "Send to speaker IP", icon: Wifi },
-                { value: "pg", label: "PG Gateway", desc: "Route via IP-A1PG", icon: PhoneCall },
+                { value: "pg", label: "PG Gateway", desc: "Route via Paging Gateway", icon: PhoneCall },
               ].map(({ value, label, desc, icon: Icon }) => (
                 <button
                   key={value}
@@ -224,16 +231,33 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
               ))}
             </div>
           ) : (
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">PG Extension / Zone</label>
-              <input
-                data-testid="input-pg-extension"
-                value={pgExtension}
-                onChange={(e) => setPgExtension(e.target.value)}
-                placeholder="e.g. 100, 200, zone-a"
-                className={INPUT_CLS}
-              />
-              <p className="text-xs text-slate-400 mt-1.5">PG gateway IP is configured in IT Settings → PG Gateway</p>
+            <div className="space-y-3">
+              {gateways.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">Paging Gateway</label>
+                  <select
+                    value={pgId}
+                    onChange={(e) => setPgId(e.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="">Auto (first configured)</option>
+                    {gateways.map((gw) => (
+                      <option key={gw.id} value={gw.id}>{gw.name} — {gw.address}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">PG Extension / Zone</label>
+                <input
+                  data-testid="input-pg-extension"
+                  value={pgExtension}
+                  onChange={(e) => setPgExtension(e.target.value)}
+                  placeholder="e.g. 100, 200, zone-a"
+                  className={INPUT_CLS}
+                />
+                <p className="text-xs text-slate-400 mt-1.5">Paging Gateways are configured in IT Settings</p>
+              </div>
             </div>
           )}
 

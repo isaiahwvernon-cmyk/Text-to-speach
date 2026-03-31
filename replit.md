@@ -47,7 +47,7 @@ These are seeded automatically on first run if no users.json exists.
 - `client/src/pages/home.tsx` — Main dashboard (TTS panel + volume control)
 - `client/src/pages/login.tsx` — Login page
 - `client/src/pages/admin.tsx` — Admin: user management
-- `client/src/pages/it-settings.tsx` — IT: SIP, PG, TTS, logging settings
+- `client/src/pages/it-settings.tsx` — IT: Paging Gateways (multi), TTS, logging settings
 - `client/src/context/AuthContext.tsx` — JWT auth context
 - `client/src/lib/auth.ts` — Auth utilities (token storage, apiFetch)
 - `server/routes.ts` — All API routes
