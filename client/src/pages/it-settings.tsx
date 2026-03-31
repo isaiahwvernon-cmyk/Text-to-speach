@@ -192,24 +192,30 @@ export default function ItSettingsPage() {
               { key: "tts", label: "TTS Engine" },
               { key: "sip", label: "SIP" },
               { key: "pg", label: "PG Gateway" },
-            ].map(({ key, label }) => (
-              <div key={key} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
-                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">{label}</div>
-                {status[key] === "ok" && <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />}
-                {status[key] === "unconfigured" && <AlertCircle className="w-6 h-6 text-slate-300 mx-auto" />}
-                {(status[key] === "error" || status[key] === "unavailable") && <AlertCircle className="w-6 h-6 text-red-500 mx-auto" />}
-                {status[key] === "checking" && <Loader2 className="w-6 h-6 text-yellow-500 mx-auto animate-spin" />}
-                <div className={`text-xs mt-1.5 font-medium capitalize ${
-                  status[key] === "ok" ? "text-green-600" :
-                  status[key] === "unconfigured" ? "text-slate-400" :
-                  "text-red-500"}`}>
-                  {status[key]}
+            ].map(({ key, label }) => {
+              // tts field is an object {status, message}; others are plain strings
+              const raw = status[key];
+              const statusStr: string = raw && typeof raw === "object" ? (raw as any).status : (raw as string);
+              const ttsMsg: string | undefined = key === "tts" && raw && typeof raw === "object" ? (raw as any).message : undefined;
+              return (
+                <div key={key} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
+                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">{label}</div>
+                  {statusStr === "ok" && <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />}
+                  {statusStr === "unconfigured" && <AlertCircle className="w-6 h-6 text-slate-300 mx-auto" />}
+                  {(statusStr === "error" || statusStr === "unavailable") && <AlertCircle className="w-6 h-6 text-red-500 mx-auto" />}
+                  {statusStr === "checking" && <Loader2 className="w-6 h-6 text-yellow-500 mx-auto animate-spin" />}
+                  <div className={`text-xs mt-1.5 font-medium capitalize ${
+                    statusStr === "ok" ? "text-green-600" :
+                    statusStr === "unconfigured" ? "text-slate-400" :
+                    "text-red-500"}`}>
+                    {statusStr}
+                  </div>
+                  {ttsMsg && (
+                    <div className="text-xs text-slate-400 mt-1 leading-tight">{ttsMsg}</div>
+                  )}
                 </div>
-                {key === "tts" && status.ttsMessage && (
-                  <div className="text-xs text-slate-400 mt-1 leading-tight">{status.ttsMessage}</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
