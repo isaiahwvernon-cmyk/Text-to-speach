@@ -161,7 +161,7 @@ async function makeRequest(
       port: 80,
       path: apiPath,
       method: "GET",
-      timeout: 5000,
+      timeout: 3000,
     };
 
     const doRequest = (authHeader?: string) => {

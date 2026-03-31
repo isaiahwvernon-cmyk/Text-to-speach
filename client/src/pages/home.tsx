@@ -296,9 +296,10 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
 }
 
 // ─── Speaker Card ─────────────────────────────────────────────────────────────
-function SpeakerCard({ speaker, status, onVolumeSet, onVolumeInc, onVolumeDec, onMuteToggle }: {
+function SpeakerCard({ speaker, status, pending, onVolumeSet, onVolumeInc, onVolumeDec, onMuteToggle }: {
   speaker: SpeakerType;
   status: SpeakerStatus | null;
+  pending?: boolean;
   onVolumeSet: (v: number) => void;
   onVolumeInc: () => void;
   onVolumeDec: () => void;
@@ -312,7 +313,12 @@ function SpeakerCard({ speaker, status, onVolumeSet, onVolumeInc, onVolumeDec, o
   const maxVol = status?.max ?? 61;
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 space-y-2">
+    <div className={`bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 space-y-2 relative ${pending ? "opacity-75" : ""}`}>
+      {pending && (
+        <div className="absolute inset-0 rounded-xl flex items-center justify-center bg-white/40 dark:bg-slate-800/40 z-10">
+          <Loader2 className="w-5 h-5 animate-spin text-[#FF8200]" />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{speaker.label}</div>
@@ -394,6 +400,7 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   const [statuses, setStatuses] = useState<Record<string, SpeakerStatus>>({});
   const [syncMode, setSyncMode] = useState(room.syncMode ?? true);
   const [expanded, setExpanded] = useState(true);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   const fetchStatus = useCallback(async () => {
     if (!room.speakers?.length) return;
@@ -415,7 +422,11 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   }, [room.speakers]);
 
   useEffect(() => {
-    if (room.mode !== "pg" && room.speakers?.length) fetchStatus();
+    if (room.mode !== "pg" && room.speakers?.length) {
+      fetchStatus();
+      const interval = setInterval(fetchStatus, 30000);
+      return () => clearInterval(interval);
+    }
   }, [fetchStatus, room.mode]);
 
   function applyOptimistic(spkId: string, patch: Partial<SpeakerStatus>) {
@@ -426,6 +437,7 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   }
 
   async function callSpeaker(spk: SpeakerType, endpoint: string, extra: Record<string, any>) {
+    setPendingIds((prev) => new Set(prev).add(spk.id));
     try {
       const res = await apiFetch(endpoint, {
         method: "POST",
@@ -434,11 +446,12 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Request failed" }));
         toast({ title: "Speaker error", description: err.error || "Failed to contact speaker", variant: "destructive" });
-        return;
       }
-      await fetchStatus();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setPendingIds((prev) => { const s = new Set(prev); s.delete(spk.id); return s; });
+      fetchStatus();
     }
   }
 
@@ -559,6 +572,7 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
               key={speaker.id}
               speaker={speaker}
               status={statuses[speaker.id] ?? null}
+              pending={pendingIds.has(speaker.id)}
               onVolumeSet={(v) => setVolumeOptimistic(speaker, v)}
               onVolumeInc={() => incVolumeOptimistic(speaker)}
               onVolumeDec={() => decVolumeOptimistic(speaker)}

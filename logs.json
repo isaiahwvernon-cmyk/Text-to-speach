@@ -1,5 +1,12 @@
 [
   {
+    "id": "mnet33zt29eb6991",
+    "timestamp": "2026-03-31T16:03:04.313Z",
+    "level": "info",
+    "message": "User logged in: it",
+    "user": "it"
+  },
+  {
     "id": "mnesmxbo7a7bbcc9",
     "timestamp": "2026-03-31T15:50:29.172Z",
     "level": "info",
