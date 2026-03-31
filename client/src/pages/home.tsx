@@ -416,10 +416,15 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
 
   async function callSpeaker(spk: SpeakerType, endpoint: string, extra: Record<string, any>) {
     try {
-      await apiFetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         body: JSON.stringify({ ipAddress: spk.ipAddress, username: spk.username, password: spk.password, ...extra }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }));
+        toast({ title: "Speaker error", description: err.error || "Failed to contact speaker", variant: "destructive" });
+        return;
+      }
       await fetchStatus();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -554,11 +559,10 @@ type JobState = {
   error?: string;
 };
 
-function TtsPanel() {
+function TtsPanel({ contacts }: { contacts: Contact[] }) {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [text, setText] = useState("");
-  const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactId, setSelectedContactId] = useState("");
   const [codec, setCodec] = useState<Codec>("PCMU");
   const [dtmfDelay, setDtmfDelay] = useState(600);
@@ -579,20 +583,10 @@ function TtsPanel() {
   }, [user?.presets]);
 
   useEffect(() => {
-    async function loadContacts() {
-      try {
-        const res = await apiFetch("/api/rooms");
-        if (res.ok) {
-          const data = await res.json();
-          setContacts(data);
-          if (data.length > 0 && !selectedContactId) {
-            setSelectedContactId(data[0].id);
-          }
-        }
-      } catch {}
+    if (contacts.length > 0 && !selectedContactId) {
+      setSelectedContactId(contacts[0].id);
     }
-    loadContacts();
-  }, []);
+  }, [contacts]);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -1232,7 +1226,7 @@ export default function Home() {
 
       {/* Main content */}
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
-        {user?.ttsEnabled && <TtsPanel />}
+        {user?.ttsEnabled && <TtsPanel contacts={contacts} />}
 
         {/* Volume / Contacts section */}
         <div>

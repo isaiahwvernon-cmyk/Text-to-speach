@@ -309,15 +309,22 @@ export default function ItSettingsPage() {
             {/* TTS Settings */}
             <Section title="TTS Engine" icon={Mic}>
               <div className="space-y-5">
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 text-xs text-green-700 dark:text-green-300 space-y-2">
-                  <div className="font-semibold flex items-center gap-1.5"><Mic className="w-3.5 h-3.5" /> Kokoro TTS Setup</div>
-                  <p>To enable real audio generation, install Kokoro TTS on the host machine:</p>
-                  <code className="block bg-black/10 dark:bg-black/20 rounded-lg px-3 py-2 font-mono text-green-800 dark:text-green-200">
-                    pip install kokoro soundfile
-                  </code>
-                  <p>The server will automatically detect Kokoro at startup. Restart the server after installation.</p>
-                  <p>Kokoro is a free, open-source 82M parameter TTS model (Apache 2.0 license).</p>
-                </div>
+                {status?.tts?.status === "ok" ? (
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 text-xs text-green-700 dark:text-green-300 space-y-1">
+                    <div className="font-semibold flex items-center gap-1.5"><Mic className="w-3.5 h-3.5" /> Kokoro TTS is ready</div>
+                    <p>The TTS engine is installed and running. Voice announcements are enabled.</p>
+                  </div>
+                ) : (
+                  <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-xs text-orange-700 dark:text-orange-400 space-y-2">
+                    <div className="font-semibold flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> Kokoro TTS not detected</div>
+                    <p>To enable real audio generation, install Python 3.12 and Kokoro TTS on the host machine:</p>
+                    <code className="block bg-black/10 dark:bg-black/20 rounded-lg px-3 py-2 font-mono text-orange-800 dark:text-orange-200">
+                      pip install kokoro soundfile
+                    </code>
+                    <p>Python 3.12 must be installed and added to PATH. Restart the server after installation.</p>
+                    <p>Kokoro is a free, open-source 82M parameter TTS model (Apache 2.0 license).</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Default Codec">
