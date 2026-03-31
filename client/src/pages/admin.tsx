@@ -161,7 +161,7 @@ function UserFormDialog({ contacts, onSave, onCancel, editUser }: {
               onClick={() => setTtsEnabled((v) => !v)}
               className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${ttsEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
             >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ttsEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-[left] duration-150 ${ttsEnabled ? "left-[22px]" : "left-[2px]"}`} />
             </button>
           </div>
 

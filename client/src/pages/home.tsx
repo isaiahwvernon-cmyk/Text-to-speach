@@ -924,7 +924,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                 onClick={() => setChimeEnabled((v) => !v)}
                 className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${chimeEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
               >
-                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${chimeEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-[left] duration-150 ${chimeEnabled ? "left-[22px]" : "left-[2px]"}`} />
               </button>
             </div>
 
