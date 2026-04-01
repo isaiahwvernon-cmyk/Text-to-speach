@@ -268,7 +268,7 @@ export default function ItSettingsPage() {
               <div className="text-xs text-slate-400">System configuration &amp; diagnostics</div>
             </div>
           </div>
-          <div className="ml-auto flex gap-2 flex-wrap justify-end">
+          <div className="ml-auto flex items-center gap-1">
             <button
               data-testid="button-refresh-settings"
               onClick={loadAll}
@@ -277,39 +277,49 @@ export default function ItSettingsPage() {
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-            <button
-              data-testid="button-export-config"
-              onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Export full configuration"
-            >
-              <Download className="w-4 h-4" /> Config
-            </button>
-            <button
-              data-testid="button-import-config"
-              onClick={handleImportClick}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Import full configuration"
-            >
-              <Upload className="w-4 h-4" /> Config
-            </button>
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-            <button
-              data-testid="button-export-contacts"
-              onClick={handleContactsExport}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Export contacts list"
-            >
-              <Download className="w-4 h-4" /> Contacts
-            </button>
-            <button
-              data-testid="button-import-contacts"
-              onClick={handleContactsImportClick}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Import contacts list"
-            >
-              <Upload className="w-4 h-4" /> Contacts
-            </button>
+            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />
+            {/* Config export/import */}
+            <div className="flex items-center gap-0.5">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1">Config</span>
+              <button
+                data-testid="button-export-config"
+                onClick={handleExport}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Export full configuration"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              <button
+                data-testid="button-import-config"
+                onClick={handleImportClick}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Import full configuration"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />
+            {/* Contacts export/import */}
+            <div className="flex items-center gap-0.5">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-1">Contacts</span>
+              <button
+                data-testid="button-export-contacts"
+                onClick={handleContactsExport}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Export contacts list"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              <button
+                data-testid="button-import-contacts"
+                onClick={handleContactsImportClick}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Import contacts list"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />
             <Button
               data-testid="button-save-settings"
               onClick={handleSave}
