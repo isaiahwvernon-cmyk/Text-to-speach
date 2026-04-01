@@ -90,17 +90,18 @@ function writeRoomsConfig(rooms: any[]): void {
   fs.writeFileSync(ROOMS_CONFIG_PATH, JSON.stringify(rooms, null, 2), "utf-8");
 }
 
-function getNetworkUrl(): string {
+function getNetworkUrls(): string[] {
   const ifaces = os.networkInterfaces();
+  const urls: string[] = [];
   for (const [, addrs] of Object.entries(ifaces)) {
     if (!addrs) continue;
     for (const addr of addrs) {
       if (addr.family === "IPv4" && !addr.internal) {
-        return `http://${addr.address}:5000`;
+        urls.push(`http://${addr.address}:5000`);
       }
     }
   }
-  return "http://localhost:5000";
+  return urls.length > 0 ? urls : ["http://localhost:5000"];
 }
 
 const volumeSetSchema = speakerConnectionSchema.extend({
@@ -238,13 +239,14 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   // ─────────────────────────────────────────────────────────────────────────────
 
   app.get("/api/qr", (_req, res) => {
-    const url = getNetworkUrl();
-    res.json({ url });
+    const urls = getNetworkUrls();
+    res.json({ urls, url: urls[0] });
   });
 
-  app.get("/api/qr/image", async (_req, res) => {
+  app.get("/api/qr/image", async (req, res) => {
     try {
-      const url = getNetworkUrl();
+      const urls = getNetworkUrls();
+      const url = (req.query.url as string) || urls[0];
       const svg = await QRCode.toString(url, { type: "svg", margin: 2, width: 300 });
       res.type("image/svg+xml").send(svg);
     } catch (err: any) {
