@@ -378,6 +378,36 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // CONTACTS EXPORT / IMPORT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/contacts/export", requireAuth, requireRole("it"), (_req, res) => {
+    try {
+      const contacts = readRoomsConfig();
+      const payload = { version: 1, exportedAt: new Date().toISOString(), contacts };
+      res.setHeader("Content-Disposition", `attachment; filename="voxnova-contacts-${Date.now()}.json"`);
+      res.setHeader("Content-Type", "application/json");
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ error: "Export failed" });
+    }
+  });
+
+  app.post("/api/contacts/import", requireAuth, requireRole("it"), (req, res) => {
+    try {
+      const { contacts } = req.body as { contacts?: any };
+      if (!contacts || !Array.isArray(contacts)) {
+        return res.status(400).json({ error: "Invalid contacts file — expected a contacts array" });
+      }
+      writeRoomsConfig(contacts);
+      addLog("warn", "Contacts imported from file", (req as any).auth.username);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Import failed", details: err?.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // CONTACTS / ROOMS ROUTES
   // ─────────────────────────────────────────────────────────────────────────────
 

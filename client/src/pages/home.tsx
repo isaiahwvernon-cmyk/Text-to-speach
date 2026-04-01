@@ -5,7 +5,7 @@ import {
   AlertCircle, ArrowLeft, Trash2, PlusCircle, Pencil, X, Search, RefreshCw,
   CloudOff, Mic, Send, Radio, Settings, Users, ChevronDown, ChevronUp,
   Bookmark, LogOut, CheckCircle2, AlertTriangle, Wifi, WifiOff, Loader2,
-  Bell, BellOff, Zap, Globe, PhoneCall, Phone, Clock, ListOrdered,
+  Bell, BellOff, Zap, Globe, PhoneCall, Phone, Clock, ListOrdered, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -660,6 +660,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
   const [jobState, setJobState] = useState<JobState | null>(null);
   const [lastResult, setLastResult] = useState<{ steps: ResultStep[]; simulated?: boolean } | null>(null);
 
+  const [lastSentText, setLastSentText] = useState<string>(() => localStorage.getItem("voxnova_last_sent") || "");
   const [presets, setPresets] = useState<TtsPreset[]>(user?.presets || []);
   const [addingPreset, setAddingPreset] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
@@ -730,7 +731,11 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
             if (status.status === "done") {
               clearInterval(pollRef.current!);
               setLastResult({ steps: status.result?.steps || [], simulated: status.result?.simulated });
-              if (!presetText) setText("");
+              if (!presetText) {
+                setLastSentText(finalText);
+                localStorage.setItem("voxnova_last_sent", finalText);
+                setText("");
+              }
               setSending(false);
               resolve();
             } else if (status.status === "error") {
@@ -823,7 +828,22 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
             className={INPUT_CLS + " resize-none"}
             maxLength={2000}
           />
-          <div className="text-right text-xs text-slate-400 mt-1">{text.length}/2000</div>
+          <div className="flex items-center justify-between mt-1">
+            {lastSentText && lastSentText !== text ? (
+              <button
+                data-testid="button-use-last-sent"
+                onClick={() => setText(lastSentText)}
+                className="flex items-center gap-1.5 max-w-[80%] text-left px-2.5 py-1 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 text-xs text-[#FF8200] font-medium hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors group"
+                title="Click to re-use this message"
+              >
+                <RotateCcw className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate">{lastSentText}</span>
+              </button>
+            ) : (
+              <span />
+            )}
+            <span className="text-xs text-slate-400 ml-auto pl-2">{text.length}/2000</span>
+          </div>
         </div>
 
         {/* Contact selector */}

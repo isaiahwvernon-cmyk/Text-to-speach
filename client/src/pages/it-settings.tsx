@@ -170,6 +170,54 @@ export default function ItSettingsPage() {
     input.click();
   }
 
+  async function handleContactsExport() {
+    try {
+      const res = await apiFetch("/api/contacts/export");
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `voxnova-contacts-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Contacts exported" });
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e.message, variant: "destructive" });
+    }
+  }
+
+  function handleContactsImportClick() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (!payload.contacts || !Array.isArray(payload.contacts)) {
+          throw new Error("Invalid contacts file — expected a contacts array.");
+        }
+        if (!confirm(`This will replace all ${payload.contacts.length} contacts. Continue?`)) return;
+        const res = await apiFetch("/api/contacts/import", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Import failed");
+        }
+        toast({ title: "Contacts imported", description: `${payload.contacts.length} contacts loaded.` });
+        await loadAll();
+      } catch (e: any) {
+        toast({ title: "Import failed", description: e.message, variant: "destructive" });
+      }
+    };
+    input.click();
+  }
+
   function updateSip(key: string, value: any) {
     setSettings((s) => s ? { ...s, sip: { ...s.sip, [key]: value } } : s);
   }
@@ -233,17 +281,34 @@ export default function ItSettingsPage() {
               data-testid="button-export-config"
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Export configuration"
+              title="Export full configuration"
             >
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4" /> Config
             </button>
             <button
               data-testid="button-import-config"
               onClick={handleImportClick}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title="Import configuration"
+              title="Import full configuration"
             >
-              <Upload className="w-4 h-4" /> Import
+              <Upload className="w-4 h-4" /> Config
+            </button>
+            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+            <button
+              data-testid="button-export-contacts"
+              onClick={handleContactsExport}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Export contacts list"
+            >
+              <Download className="w-4 h-4" /> Contacts
+            </button>
+            <button
+              data-testid="button-import-contacts"
+              onClick={handleContactsImportClick}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Import contacts list"
+            >
+              <Upload className="w-4 h-4" /> Contacts
             </button>
             <Button
               data-testid="button-save-settings"
