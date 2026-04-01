@@ -97,7 +97,7 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
     if (!name.trim()) return;
 
     if (mode === "direct") {
-      const validSpeakers = speakers.filter((s) => s.ipAddress.trim() && s.username.trim() && s.password.trim());
+      const validSpeakers = speakers.filter((s) => s.ipAddress.trim());
       if (validSpeakers.length === 0) return;
       onAdd({
         id: editContact?.id || generateId(),
@@ -219,7 +219,7 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
                       data-testid={`input-speaker-username-${i}`}
                       value={spk.username}
                       onChange={(e) => updateSpeaker(i, "username", e.target.value)}
-                      placeholder="Username"
+                      placeholder="Username (optional)"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8200]"
                     />
                     <input
@@ -227,7 +227,7 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
                       type="password"
                       value={spk.password}
                       onChange={(e) => updateSpeaker(i, "password", e.target.value)}
-                      placeholder="Password"
+                      placeholder="Password (optional)"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8200]"
                     />
                   </div>
@@ -307,6 +307,7 @@ function SpeakerCard({ speaker, status, pending, onVolumeSet, onVolumeInc, onVol
 }) {
   const [inputVol, setInputVol] = useState<string | null>(null);
 
+  const hasAuth = !!speaker.username?.trim() && !!speaker.password?.trim();
   const connected = status?.connected !== false;
   const volume = status?.volume ?? null;
   const muted = status?.muteState === "mute";
@@ -328,7 +329,11 @@ function SpeakerCard({ speaker, status, pending, onVolumeSet, onVolumeInc, onVol
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!status ? (
+          {!hasAuth ? (
+            <span className="text-xs text-amber-500 flex items-center gap-1">
+              <VolumeX className="w-3 h-3" />TTS only
+            </span>
+          ) : !status ? (
             <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Connecting…</span>
           ) : !connected ? (
             <span className="text-xs text-red-500 flex items-center gap-1"><CloudOff className="w-3 h-3" />Offline</span>
@@ -337,19 +342,21 @@ function SpeakerCard({ speaker, status, pending, onVolumeSet, onVolumeInc, onVol
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />Online
             </span>
           )}
-          <button
-            onClick={onMuteToggle}
-            disabled={!connected || !status}
-            className={`p-1.5 rounded-lg transition-colors ${muted
-              ? "bg-red-100 dark:bg-red-900/30 text-red-500"
-              : "bg-slate-100 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-500"}`}
-          >
-            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
+          {hasAuth && (
+            <button
+              onClick={onMuteToggle}
+              disabled={!connected || !status}
+              className={`p-1.5 rounded-lg transition-colors ${muted
+                ? "bg-red-100 dark:bg-red-900/30 text-red-500"
+                : "bg-slate-100 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-500"}`}
+            >
+              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          )}
         </div>
       </div>
 
-      {connected && status && (
+      {hasAuth && connected && status && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <button onClick={onVolumeDec} className="p-1.5 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg hover:bg-slate-50">
@@ -408,12 +415,15 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   const fetchStatus = useCallback(async () => {
     if (!room.speakers?.length) return;
     const results = await Promise.allSettled(
-      room.speakers.map((s) =>
-        apiFetch("/api/speaker/status", {
+      room.speakers.map((s) => {
+        if (!s.username?.trim() || !s.password?.trim()) {
+          return Promise.resolve({ connected: true, noAuth: true, volume: null, muteState: "unmute" });
+        }
+        return apiFetch("/api/speaker/status", {
           method: "POST",
           body: JSON.stringify({ ipAddress: s.ipAddress, username: s.username, password: s.password }),
-        }).then((r) => r.json())
-      )
+        }).then((r) => r.json());
+      })
     );
     const newStatuses: Record<string, SpeakerStatus> = {};
     results.forEach((r, i) => {
@@ -448,6 +458,7 @@ function RoomPanel({ room, isAdmin, onEdit, onDelete }: {
   }
 
   async function callSpeaker(spk: SpeakerType, endpoint: string, extra: Record<string, any>) {
+    if (!spk.username?.trim() || !spk.password?.trim()) return;
     setPendingIds((prev) => new Set(prev).add(spk.id));
     let failed = false;
     try {

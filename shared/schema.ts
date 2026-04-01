@@ -47,13 +47,14 @@ export const muteResponseSchema = z.object({
 export type MuteResponse = z.infer<typeof muteResponseSchema>;
 
 export const speakerStatusSchema = z.object({
-  volume: z.number(),
-  max: z.number(),
-  min: z.number(),
+  volume: z.number().nullable().optional(),
+  max: z.number().optional(),
+  min: z.number().optional(),
   muteState: z.enum(["mute", "unmute"]),
   modelName: z.string().optional(),
   terminalName: z.string().optional(),
   connected: z.boolean(),
+  noAuth: z.boolean().optional(),
 });
 export type SpeakerStatus = z.infer<typeof speakerStatusSchema>;
 

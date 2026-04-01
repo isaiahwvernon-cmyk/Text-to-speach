@@ -287,7 +287,7 @@ export default function ItSettingsPage() {
                 className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Export full configuration"
               >
-                <Download className="w-4 h-4" />
+                <Upload className="w-4 h-4" />
               </button>
               <button
                 data-testid="button-import-config"
@@ -295,7 +295,7 @@ export default function ItSettingsPage() {
                 className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Import full configuration"
               >
-                <Upload className="w-4 h-4" />
+                <Download className="w-4 h-4" />
               </button>
             </div>
             <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />
@@ -308,7 +308,7 @@ export default function ItSettingsPage() {
                 className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Export contacts list"
               >
-                <Download className="w-4 h-4" />
+                <Upload className="w-4 h-4" />
               </button>
               <button
                 data-testid="button-import-contacts"
@@ -316,7 +316,7 @@ export default function ItSettingsPage() {
                 className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Import contacts list"
               >
-                <Upload className="w-4 h-4" />
+                <Download className="w-4 h-4" />
               </button>
             </div>
             <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />

@@ -248,7 +248,7 @@ function ContactFormDialog({ onSave, onCancel, editContact }: {
     setSaving(true);
     try {
       if (mode === "direct") {
-        const validSpeakers = speakers.filter((s) => s.ipAddress?.trim() && s.username?.trim() && s.password?.trim());
+        const validSpeakers = speakers.filter((s) => s.ipAddress?.trim());
         if (validSpeakers.length === 0) return;
         await onSave({
           ...(editContact ? { id: editContact.id } : {}),
@@ -370,17 +370,20 @@ function ContactFormDialog({ onSave, onCancel, editContact }: {
                     <input
                       value={spk.username}
                       onChange={(e) => updateSpeaker(i, "username", e.target.value)}
-                      placeholder="Username"
+                      placeholder="Username (optional)"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8200]"
                     />
                     <input
                       type="password"
                       value={spk.password}
                       onChange={(e) => updateSpeaker(i, "password", e.target.value)}
-                      placeholder="Password"
+                      placeholder="Password (optional)"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8200]"
                     />
                   </div>
+                  {!spk.username?.trim() && !spk.password?.trim() && (
+                    <p className="text-xs text-amber-500">No credentials — volume control will be disabled for this speaker</p>
+                  )}
                 </div>
               ))}
             </div>
