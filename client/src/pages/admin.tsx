@@ -969,7 +969,7 @@ export default function AdminPage() {
                           </div>
                           <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{p.text}</p>
                           <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                            <span>Speed: {p.voiceSpeed.toFixed(1)}×</span>
+                            <span>Speed: {(p.voiceSpeed ?? 1.0).toFixed(1)}×</span>
                             <span>By: {p.createdBy}</span>
                             {p.audioGeneratedAt && <span>Generated: {new Date(p.audioGeneratedAt).toLocaleDateString()}</span>}
                           </div>

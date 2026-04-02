@@ -190,10 +190,20 @@ export function clearLogs(): void {
 const PRESETS_FILE = path.join(DATA_DIR, "presets.json");
 export const PRESETS_AUDIO_DIR = path.join(DATA_DIR, "data", "presets");
 
+const PRESET_DEFAULTS: Partial<GlobalPreset> = {
+  voiceSpeed: 1.0,
+  voicePitch: 1.0,
+  allowedUserIds: null,
+  audioReady: false,
+  createdBy: "unknown",
+  createdAt: new Date().toISOString(),
+};
+
 function readPresets(): GlobalPreset[] {
   try {
     if (!fs.existsSync(PRESETS_FILE)) return [];
-    return JSON.parse(fs.readFileSync(PRESETS_FILE, "utf-8"));
+    const raw: any[] = JSON.parse(fs.readFileSync(PRESETS_FILE, "utf-8"));
+    return raw.map((p) => ({ ...PRESET_DEFAULTS, ...p })) as GlobalPreset[];
   } catch {
     return [];
   }
