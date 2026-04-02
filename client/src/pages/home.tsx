@@ -1016,8 +1016,8 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
           </div>
         </div>
 
-        {/* PG timing options — only shown for PG contacts */}
-        {selectedContact?.mode === "pg" && (
+        {/* PG timing options — only shown for PG contacts and non-user roles */}
+        {selectedContact?.mode === "pg" && user?.role !== "user" && (
           <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-4 border border-slate-200 dark:border-slate-600">
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">PG Timing</div>
 
