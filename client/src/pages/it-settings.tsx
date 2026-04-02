@@ -6,10 +6,11 @@ import { apiFetch } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { SystemSettings, LogEntry, PgGateway, GlobalPreset } from "@shared/schema";
+import { SUPPORTED_LANGUAGES } from "@shared/schema";
 import {
   ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
   Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight, Plus,
-  Download, Upload, Zap, X, Pencil,
+  Download, Upload, Zap, X, Pencil, Globe,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -80,7 +81,11 @@ export default function ItSettingsPage() {
   const [editingPreset, setEditingPreset] = useState<GlobalPreset | null>(null);
   const [presetName, setPresetName] = useState("");
   const [presetText, setPresetText] = useState("");
+  const [presetPrimaryLang, setPresetPrimaryLang] = useState("en-us");
   const [presetSpeed, setPresetSpeed] = useState(1.0);
+  const [presetSecondLangEnabled, setPresetSecondLangEnabled] = useState(false);
+  const [presetSecondText, setPresetSecondText] = useState("");
+  const [presetSecondLang, setPresetSecondLang] = useState("fr");
   const [presetSaving, setPresetSaving] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -124,7 +129,11 @@ export default function ItSettingsPage() {
     setEditingPreset(p ?? null);
     setPresetName(p?.name ?? "");
     setPresetText(p?.text ?? "");
+    setPresetPrimaryLang(p?.language ?? "en-us");
     setPresetSpeed(p?.voiceSpeed ?? 1.0);
+    setPresetSecondLangEnabled(!!(p?.secondText));
+    setPresetSecondText(p?.secondText ?? "");
+    setPresetSecondLang(p?.secondLanguage ?? "fr");
     setShowPresetForm(true);
   }
 
@@ -137,7 +146,14 @@ export default function ItSettingsPage() {
       const method = editingPreset ? "PUT" : "POST";
       const res = await apiFetch(url, {
         method,
-        body: JSON.stringify({ name: presetName.trim(), text: presetText.trim(), voiceSpeed: presetSpeed }),
+        body: JSON.stringify({
+          name: presetName.trim(),
+          text: presetText.trim(),
+          language: presetPrimaryLang,
+          voiceSpeed: presetSpeed,
+          secondText: presetSecondLangEnabled && presetSecondText.trim() ? presetSecondText.trim() : undefined,
+          secondLanguage: presetSecondLangEnabled && presetSecondText.trim() ? presetSecondLang : undefined,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
@@ -750,6 +766,64 @@ export default function ItSettingsPage() {
                     <input type="range" min={0.5} max={2.0} step={0.1} value={presetSpeed} onChange={(e) => setPresetSpeed(Number(e.target.value))} className="w-full accent-[#FF8200]" />
                   </div>
                 </div>
+
+                {/* Second language block */}
+                <div className="border border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      <Globe className="w-4 h-4 text-slate-400" />
+                      Second Language
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPresetSecondLangEnabled((v) => !v)}
+                      className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${presetSecondLangEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-[left] duration-150 ${presetSecondLangEnabled ? "left-[22px]" : "left-[2px]"}`} />
+                    </button>
+                  </div>
+
+                  {!presetSecondLangEnabled && (
+                    <p className="text-xs text-slate-400">Enable to include a second-language announcement in this preset.</p>
+                  )}
+
+                  {presetSecondLangEnabled && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">First language</label>
+                          <select value={presetPrimaryLang} onChange={(e) => setPresetPrimaryLang(e.target.value)} className={SELECT_CLS}>
+                            {SUPPORTED_LANGUAGES.map((l) => (
+                              <option key={l.code} value={l.code}>{l.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Second language</label>
+                          <select value={presetSecondLang} onChange={(e) => setPresetSecondLang(e.target.value)} className={SELECT_CLS}>
+                            {SUPPORTED_LANGUAGES.filter((l) => l.code !== presetPrimaryLang).map((l) => (
+                              <option key={l.code} value={l.code}>{l.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          Second announcement text <span className="font-normal">({presetSecondLang})</span>
+                        </label>
+                        <textarea
+                          value={presetSecondText}
+                          onChange={(e) => setPresetSecondText(e.target.value)}
+                          placeholder={`Enter the ${SUPPORTED_LANGUAGES.find((l) => l.code === presetSecondLang)?.label ?? "second language"} text…`}
+                          rows={3}
+                          className={INPUT_CLS + " resize-none"}
+                          maxLength={2000}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => setShowPresetForm(false)} className="flex-1 rounded-xl">Cancel</Button>
                   <Button type="submit" disabled={presetSaving} className="flex-1 bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl">

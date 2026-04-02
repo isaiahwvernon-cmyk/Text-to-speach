@@ -106,6 +106,21 @@ export const updateUserSchema = createUserSchema.partial().extend({
 });
 export type UpdateUserPayload = z.infer<typeof updateUserSchema>;
 
+// ─── Language Support ─────────────────────────────────────────────────────────
+export const SUPPORTED_LANGUAGES = [
+  { code: "en-us", label: "English (US)" },
+  { code: "en-gb", label: "English (UK)" },
+  { code: "fr",    label: "French" },
+  { code: "es",    label: "Spanish" },
+  { code: "ja",    label: "Japanese" },
+  { code: "zh",    label: "Mandarin" },
+  { code: "ko",    label: "Korean" },
+  { code: "pt",    label: "Portuguese" },
+  { code: "hi",    label: "Hindi" },
+  { code: "it",    label: "Italian" },
+] as const;
+export type LanguageCode = typeof SUPPORTED_LANGUAGES[number]["code"];
+
 // ─── TTS / SIP Settings ───────────────────────────────────────────────────────
 export const codecSchema = z.enum(["PCMU", "PCMA", "G722"]);
 export type Codec = z.infer<typeof codecSchema>;
@@ -167,6 +182,9 @@ export const globalPresetSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   text: z.string().min(1),
+  language: z.string().default("en-us"),
+  secondText: z.string().optional(),
+  secondLanguage: z.string().optional(),
   voiceSpeed: z.number().min(0.5).max(2.0).default(1.0),
   voicePitch: z.number().min(0.5).max(2.0).default(1.0),
   createdBy: z.string(),
@@ -181,6 +199,9 @@ export type GlobalPreset = z.infer<typeof globalPresetSchema>;
 export const createGlobalPresetSchema = z.object({
   name: z.string().min(1, "Name required"),
   text: z.string().min(1, "Text required").max(2000),
+  language: z.string().optional(),
+  secondText: z.string().max(2000).optional(),
+  secondLanguage: z.string().optional(),
   voiceSpeed: z.number().min(0.5).max(2.0).optional(),
   voicePitch: z.number().min(0.5).max(2.0).optional(),
   allowedUserIds: z.array(z.string()).nullable().optional(),
@@ -202,6 +223,9 @@ export type PresetPlayPayload = z.infer<typeof presetPlaySchema>;
 // ─── TTS Send Request ─────────────────────────────────────────────────────────
 export const ttsSendSchema = z.object({
   text: z.string().min(1, "Text is required").max(2000),
+  language: z.string().default("en-us"),
+  secondText: z.string().max(2000).optional(),
+  secondLanguage: z.string().optional(),
   contactId: z.string().optional(),
   mode: ttsRoutingModeSchema.optional(),
   targetAddress: z.string().optional(),

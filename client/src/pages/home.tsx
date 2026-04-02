@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/auth";
 import type { Room, Contact, Speaker as SpeakerType, SpeakerStatus, TtsPreset, Codec, TtsRoutingMode } from "@shared/schema";
+import { SUPPORTED_LANGUAGES } from "@shared/schema";
 
 const INPUT_CLS = "w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-base";
 const SELECT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -662,6 +663,10 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [text, setText] = useState("");
+  const [primaryLang, setPrimaryLang] = useState("en-us");
+  const [secondLangEnabled, setSecondLangEnabled] = useState(false);
+  const [secondText, setSecondText] = useState("");
+  const [secondLang, setSecondLang] = useState("fr");
   const [selectedContactId, setSelectedContactId] = useState("");
   const [codec, setCodec] = useState<Codec>("PCMU");
   const [dtmfDelay, setDtmfDelay] = useState(600);
@@ -713,6 +718,9 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
         method: "POST",
         body: JSON.stringify({
           text: finalText.trim(),
+          language: primaryLang,
+          secondText: secondLangEnabled && secondText.trim() ? secondText.trim() : undefined,
+          secondLanguage: secondLangEnabled && secondText.trim() ? secondLang : undefined,
           contactId: selectedContactId,
           codec,
           dtmfDelayMs: selectedContact?.mode === "pg" ? dtmfDelay : undefined,
@@ -855,6 +863,78 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
             )}
             <span className="text-xs text-slate-400 ml-auto pl-2">{text.length}/2000</span>
           </div>
+        </div>
+
+        {/* Second language block */}
+        <div className="border border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <Globe className="w-4 h-4 text-slate-400" />
+              Second Language
+            </span>
+            <button
+              data-testid="button-second-lang-toggle"
+              type="button"
+              onClick={() => setSecondLangEnabled((v) => !v)}
+              className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${secondLangEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-[left] duration-150 ${secondLangEnabled ? "left-[22px]" : "left-[2px]"}`} />
+            </button>
+          </div>
+
+          {!secondLangEnabled && (
+            <p className="text-xs text-slate-400">Enable to play a second announcement in a different language immediately after the first.</p>
+          )}
+
+          {secondLangEnabled && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">First language</label>
+                  <select
+                    data-testid="select-primary-lang"
+                    value={primaryLang}
+                    onChange={(e) => setPrimaryLang(e.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    {SUPPORTED_LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Second language</label>
+                  <select
+                    data-testid="select-second-lang"
+                    value={secondLang}
+                    onChange={(e) => setSecondLang(e.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    {SUPPORTED_LANGUAGES.filter((l) => l.code !== primaryLang).map((l) => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                  Second announcement text <span className="text-slate-400 font-normal">({secondLang})</span>
+                </label>
+                <textarea
+                  data-testid="input-second-text"
+                  value={secondText}
+                  onChange={(e) => setSecondText(e.target.value)}
+                  placeholder={`Type the ${SUPPORTED_LANGUAGES.find((l) => l.code === secondLang)?.label ?? "second language"} announcement here…`}
+                  rows={2}
+                  className={INPUT_CLS + " resize-none"}
+                  maxLength={2000}
+                />
+                <div className="text-right mt-0.5">
+                  <span className="text-xs text-slate-400">{secondText.length}/2000</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Contact selector */}

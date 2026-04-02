@@ -971,11 +971,17 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     }
 
     const auth = (req as any).auth;
-    const { name, text, voiceSpeed = 1.0, voicePitch = 1.0, allowedUserIds = null } = parsed.data;
+    const {
+      name, text, voiceSpeed = 1.0, voicePitch = 1.0, allowedUserIds = null,
+      language = "en-us", secondText, secondLanguage,
+    } = parsed.data;
 
     const preset = createPreset({
       name,
       text,
+      language,
+      secondText,
+      secondLanguage,
       voiceSpeed,
       voicePitch,
       createdBy: auth.username,
@@ -987,7 +993,7 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     addLog("info", `Global preset "${name}" created`, auth.username);
 
     // Kick off audio generation in the background
-    generatePresetAudio(preset.id, text, voiceSpeed, voicePitch)
+    generatePresetAudio(preset.id, text, voiceSpeed, voicePitch, language, secondText, secondLanguage)
       .then(() => {
         updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
         console.log(`[Preset] Audio ready for "${name}" (${preset.id})`);
@@ -1016,19 +1022,26 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     const voiceChanged =
       (updates.voiceSpeed !== undefined && updates.voiceSpeed !== preset.voiceSpeed) ||
       (updates.voicePitch !== undefined && updates.voicePitch !== preset.voicePitch);
+    const langChanged =
+      (updates.language !== undefined && updates.language !== preset.language) ||
+      (updates.secondText !== undefined && updates.secondText !== preset.secondText) ||
+      (updates.secondLanguage !== undefined && updates.secondLanguage !== preset.secondLanguage);
 
     const updated = updatePreset(preset.id, {
       ...updates,
-      ...(textChanged || voiceChanged ? { audioReady: false, audioError: undefined } : {}),
+      ...(textChanged || voiceChanged || langChanged ? { audioReady: false, audioError: undefined } : {}),
     });
 
-    if (textChanged || voiceChanged) {
+    if (textChanged || voiceChanged || langChanged) {
       deletePresetAudio(preset.id);
       const speed = updates.voiceSpeed ?? preset.voiceSpeed;
       const pitch = updates.voicePitch ?? preset.voicePitch;
       const text = updates.text ?? preset.text;
+      const lang = updates.language ?? preset.language ?? "en-us";
+      const secondText = updates.secondText ?? preset.secondText;
+      const secondLang = updates.secondLanguage ?? preset.secondLanguage;
 
-      generatePresetAudio(preset.id, text, speed, pitch)
+      generatePresetAudio(preset.id, text, speed, pitch, lang, secondText, secondLang)
         .then(() => {
           updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
         })
@@ -1065,7 +1078,10 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     updatePreset(preset.id, { audioReady: false, audioError: undefined });
     deletePresetAudio(preset.id);
 
-    generatePresetAudio(preset.id, preset.text, preset.voiceSpeed, preset.voicePitch)
+    generatePresetAudio(
+      preset.id, preset.text, preset.voiceSpeed, preset.voicePitch,
+      preset.language ?? "en-us", preset.secondText, preset.secondLanguage
+    )
       .then(() => {
         updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
       })

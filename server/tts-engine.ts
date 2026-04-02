@@ -133,13 +133,19 @@ export function getTtsStatus(): { status: TtsStatus; message: string } {
 }
 
 /**
- * Core TTS generation — accepts explicit speed/pitch overrides.
+ * Core TTS generation — accepts explicit speed/pitch/language overrides.
+ * If secondText is provided the Python script will concatenate primary + silence + secondary
+ * into one seamless WAV, keeping the SIP session alive throughout.
  */
 async function generateSpeechToFile(
   text: string,
   outputPath: string,
   speed: number,
-  pitch: number
+  pitch: number,
+  lang = "en-us",
+  secondText?: string,
+  secondLang?: string,
+  pauseMs = 700
 ): Promise<void> {
   if (ttsStatus !== "ok" || !resolvedPythonCmd) {
     throw new Error(ttsStatusMessage);
@@ -147,14 +153,23 @@ async function generateSpeechToFile(
 
   const scriptPath = path.resolve(process.cwd(), "server/kokoro_tts.py");
 
+  const args = [
+    scriptPath,
+    "--text", text,
+    "--output", outputPath,
+    "--speed", String(speed),
+    "--pitch", String(pitch),
+    "--lang", lang,
+    "--pause-ms", String(pauseMs),
+  ];
+
+  if (secondText?.trim()) {
+    args.push("--second-text", secondText.trim());
+    args.push("--second-lang", secondLang || "fr");
+  }
+
   return new Promise((resolve, reject) => {
-    const proc = spawn(resolvedPythonCmd!, [
-      scriptPath,
-      "--text", text,
-      "--output", outputPath,
-      "--speed", String(speed),
-      "--pitch", String(pitch),
-    ]);
+    const proc = spawn(resolvedPythonCmd!, args);
 
     let stderr = "";
     proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
@@ -172,9 +187,19 @@ async function generateSpeechToFile(
 /**
  * Generate speech using settings from the system config.
  */
-async function generateSpeech(text: string, outputPath: string): Promise<void> {
+async function generateSpeech(
+  text: string,
+  outputPath: string,
+  lang = "en-us",
+  secondText?: string,
+  secondLang?: string
+): Promise<void> {
   const settings = getSettings();
-  return generateSpeechToFile(text, outputPath, settings.tts.voiceSpeed, settings.tts.voicePitch);
+  return generateSpeechToFile(
+    text, outputPath,
+    settings.tts.voiceSpeed, settings.tts.voicePitch,
+    lang, secondText, secondLang
+  );
 }
 
 /**
@@ -234,7 +259,12 @@ export async function sendTtsAnnouncement(
   const ttsStart = Date.now();
   let audioDurationSecs = 0;
   try {
-    await generateSpeech(payload.text, wavPath);
+    await generateSpeech(
+      payload.text, wavPath,
+      payload.language || "en-us",
+      payload.secondText,
+      payload.secondLanguage
+    );
     const elapsed = ((Date.now() - ttsStart) / 1000).toFixed(1);
 
     // Get duration of generated audio (WAV PCM 24 kHz mono)
@@ -336,18 +366,22 @@ export function deletePresetAudio(presetId: string): void {
 /**
  * Pre-generate Kokoro TTS audio for a global preset.
  * Saves a WAV file to PRESETS_AUDIO_DIR/{presetId}.wav.
+ * Supports bilingual presets — both clips are stitched into one WAV file.
  */
 export async function generatePresetAudio(
   presetId: string,
   text: string,
   voiceSpeed: number,
-  voicePitch: number
+  voicePitch: number,
+  lang = "en-us",
+  secondText?: string,
+  secondLang?: string
 ): Promise<void> {
   if (!fs.existsSync(PRESETS_AUDIO_DIR)) {
     fs.mkdirSync(PRESETS_AUDIO_DIR, { recursive: true });
   }
   const outputPath = getPresetWavPath(presetId);
-  await generateSpeechToFile(text, outputPath, voiceSpeed, voicePitch);
+  await generateSpeechToFile(text, outputPath, voiceSpeed, voicePitch, lang, secondText, secondLang);
 }
 
 /**

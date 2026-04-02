@@ -6,11 +6,12 @@ import { apiFetch } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { User, Contact, GlobalPreset } from "@shared/schema";
+import { SUPPORTED_LANGUAGES } from "@shared/schema";
 import {
   ArrowLeft, PlusCircle, Pencil, Trash2, X, Users, Radio,
   Shield, ShieldCheck, Wrench, Eye, EyeOff, MicOff,
   Wifi, PhoneCall, UserCheck, Zap, RefreshCw, CheckCircle2,
-  AlertCircle, Loader2, Lock, Unlock, BookOpen,
+  AlertCircle, Loader2, Lock, Unlock, BookOpen, Globe,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -457,20 +458,31 @@ function PresetFormDialog({ onSave, onCancel, editPreset }: {
 }) {
   const [name, setName] = useState(editPreset?.name || "");
   const [text, setText] = useState(editPreset?.text || "");
+  const [primaryLang, setPrimaryLang] = useState(editPreset?.language || "en-us");
   const [voiceSpeed, setVoiceSpeed] = useState(editPreset?.voiceSpeed ?? 1.0);
+  const [secondLangEnabled, setSecondLangEnabled] = useState(!!(editPreset?.secondText));
+  const [secondText, setSecondText] = useState(editPreset?.secondText || "");
+  const [secondLang, setSecondLang] = useState(editPreset?.secondLanguage || "fr");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !text.trim()) return;
     setSaving(true);
-    await onSave({ name: name.trim(), text: text.trim(), voiceSpeed });
+    await onSave({
+      name: name.trim(),
+      text: text.trim(),
+      language: primaryLang,
+      voiceSpeed,
+      secondText: secondLangEnabled && secondText.trim() ? secondText.trim() : undefined,
+      secondLanguage: secondLangEnabled && secondText.trim() ? secondLang : undefined,
+    });
     setSaving(false);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
@@ -502,6 +514,66 @@ function PresetFormDialog({ onSave, onCancel, editPreset }: {
             </div>
             <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>0.5×</span><span>2.0×</span></div>
           </div>
+
+          {/* Second language block */}
+          <div className="border border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                <Globe className="w-4 h-4 text-slate-400" />
+                Second Language
+              </span>
+              <button
+                data-testid="button-preset-second-lang-toggle"
+                type="button"
+                onClick={() => setSecondLangEnabled((v) => !v)}
+                className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${secondLangEnabled ? "bg-[#FF8200]" : "bg-slate-200 dark:bg-slate-600"}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-[left] duration-150 ${secondLangEnabled ? "left-[22px]" : "left-[2px]"}`} />
+              </button>
+            </div>
+
+            {!secondLangEnabled && (
+              <p className="text-xs text-slate-400">Enable to include a second-language announcement in this preset.</p>
+            )}
+
+            {secondLangEnabled && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">First language</label>
+                    <select value={primaryLang} onChange={(e) => setPrimaryLang(e.target.value)} className={SELECT_CLS}>
+                      {SUPPORTED_LANGUAGES.map((l) => (
+                        <option key={l.code} value={l.code}>{l.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Second language</label>
+                    <select value={secondLang} onChange={(e) => setSecondLang(e.target.value)} className={SELECT_CLS}>
+                      {SUPPORTED_LANGUAGES.filter((l) => l.code !== primaryLang).map((l) => (
+                        <option key={l.code} value={l.code}>{l.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Second announcement text <span className="font-normal">({secondLang})</span>
+                  </label>
+                  <textarea
+                    data-testid="input-preset-second-text"
+                    value={secondText}
+                    onChange={(e) => setSecondText(e.target.value)}
+                    placeholder={`Enter the ${SUPPORTED_LANGUAGES.find((l) => l.code === secondLang)?.label ?? "second language"} text…`}
+                    rows={3}
+                    className={INPUT_CLS + " resize-none"}
+                    maxLength={2000}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onCancel} className="flex-1 rounded-xl">Cancel</Button>
             <Button type="submit" disabled={saving} className="flex-1 bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl">
