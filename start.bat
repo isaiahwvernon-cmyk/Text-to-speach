@@ -100,45 +100,10 @@ if %errorlevel% neq 0 (
 )
 
 :: ── Install extra language packages ───────────────────────────────────────────
-:: These enable Mandarin, Korean and Hindi voices.
-:: Each is installed individually — a failure on one does not block the others.
+:: These enable Hindi voices.
 :INSTALL_LANG_PKGS
 echo [TTS] Checking extra language packages...
 echo.
-
-:: Mandarin Chinese -- requires jieba
-%PYTHON_CMD% -c "import jieba" >nul 2>nul
-if %errorlevel% equ 0 goto :ZH_ALREADY
-echo [TTS] Installing Mandarin support (jieba)...
-%PYTHON_CMD% -m pip install jieba >nul 2>"%TEMP%\vn_pkg.tmp"
-if %errorlevel% equ 0 goto :ZH_OK
-echo [TTS]   Mandarin -- SKIPPED. pip error:
-type "%TEMP%\vn_pkg.tmp"
-echo [TTS]   To retry: pip install jieba
-goto :ZH_DONE
-:ZH_OK
-echo [TTS]   Mandarin -- OK
-goto :ZH_DONE
-:ZH_ALREADY
-echo [TTS]   Mandarin -- already installed
-:ZH_DONE
-
-:: Korean -- requires misaki[ko]
-%PYTHON_CMD% -c "import misaki" >nul 2>nul
-if %errorlevel% equ 0 goto :KO_ALREADY
-echo [TTS] Installing Korean support (misaki[ko])...
-%PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>"%TEMP%\vn_pkg.tmp"
-if %errorlevel% equ 0 goto :KO_OK
-echo [TTS]   Korean -- SKIPPED. pip error:
-type "%TEMP%\vn_pkg.tmp"
-echo [TTS]   To retry: pip install "misaki[ko]"
-goto :KO_DONE
-:KO_OK
-echo [TTS]   Korean -- OK
-goto :KO_DONE
-:KO_ALREADY
-echo [TTS]   Korean -- already installed
-:KO_DONE
 
 :: Hindi -- requires misaki[hi]
 %PYTHON_CMD% -c "from misaki import hi" >nul 2>nul

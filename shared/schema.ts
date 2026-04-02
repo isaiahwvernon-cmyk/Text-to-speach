@@ -114,9 +114,7 @@ export const SUPPORTED_LANGUAGES = [
   { code: "es",    label: "Spanish",      extraPkg: null },
   { code: "it",    label: "Italian",      extraPkg: null },
   { code: "pt",    label: "Portuguese",   extraPkg: null },
-  { code: "zh",    label: "Mandarin",     extraPkg: "jieba" },
-  { code: "ko",    label: "Korean",       extraPkg: "misaki[ko]" },
-  { code: "hi",    label: "Hindi",        extraPkg: "misaki[hi]" },
+  { code: "hi",    label: "Hindi",        extraPkg: null },
 ] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number]["code"];
 
