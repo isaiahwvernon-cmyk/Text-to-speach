@@ -22,7 +22,7 @@ echo.
 if not exist node_modules (
     echo Installing Node dependencies... this may take a minute.
     echo.
-    call npm install
+    call npm install --no-audit
     if %errorlevel% neq 0 (
         echo.
         echo ERROR: npm install failed. See above for details.
@@ -110,8 +110,15 @@ echo.
 %PYTHON_CMD% -c "import pyopenjtalk" >nul 2>nul
 if %errorlevel% equ 0 goto :JP_ALREADY
 echo [TTS] Installing Japanese support (pyopenjtalk-prebuilt)...
-%PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>nul
-if %errorlevel% equ 0 (echo [TTS]   Japanese -- OK) else (echo [TTS]   Japanese -- SKIPPED, install failed)
+%PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>"%TEMP%\vn_pkg.tmp"
+if %errorlevel% equ 0 goto :JP_OK
+echo [TTS]   Japanese -- SKIPPED. pip error:
+type "%TEMP%\vn_pkg.tmp"
+echo [TTS]   To retry: pip install pyopenjtalk-prebuilt
+echo [TTS]   Note: pyopenjtalk may require Microsoft C++ Build Tools on some systems.
+goto :JP_DONE
+:JP_OK
+echo [TTS]   Japanese -- OK
 goto :JP_DONE
 :JP_ALREADY
 echo [TTS]   Japanese -- already installed
@@ -121,8 +128,14 @@ echo [TTS]   Japanese -- already installed
 %PYTHON_CMD% -c "import jieba" >nul 2>nul
 if %errorlevel% equ 0 goto :ZH_ALREADY
 echo [TTS] Installing Mandarin support (jieba)...
-%PYTHON_CMD% -m pip install jieba >nul 2>nul
-if %errorlevel% equ 0 (echo [TTS]   Mandarin -- OK) else (echo [TTS]   Mandarin -- SKIPPED, install failed)
+%PYTHON_CMD% -m pip install jieba >nul 2>"%TEMP%\vn_pkg.tmp"
+if %errorlevel% equ 0 goto :ZH_OK
+echo [TTS]   Mandarin -- SKIPPED. pip error:
+type "%TEMP%\vn_pkg.tmp"
+echo [TTS]   To retry: pip install jieba
+goto :ZH_DONE
+:ZH_OK
+echo [TTS]   Mandarin -- OK
 goto :ZH_DONE
 :ZH_ALREADY
 echo [TTS]   Mandarin -- already installed
@@ -132,8 +145,14 @@ echo [TTS]   Mandarin -- already installed
 %PYTHON_CMD% -c "import misaki" >nul 2>nul
 if %errorlevel% equ 0 goto :KO_ALREADY
 echo [TTS] Installing Korean support (misaki[ko])...
-%PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>nul
-if %errorlevel% equ 0 (echo [TTS]   Korean -- OK) else (echo [TTS]   Korean -- SKIPPED, install failed)
+%PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>"%TEMP%\vn_pkg.tmp"
+if %errorlevel% equ 0 goto :KO_OK
+echo [TTS]   Korean -- SKIPPED. pip error:
+type "%TEMP%\vn_pkg.tmp"
+echo [TTS]   To retry: pip install "misaki[ko]"
+goto :KO_DONE
+:KO_OK
+echo [TTS]   Korean -- OK
 goto :KO_DONE
 :KO_ALREADY
 echo [TTS]   Korean -- already installed
@@ -143,8 +162,14 @@ echo [TTS]   Korean -- already installed
 %PYTHON_CMD% -c "from misaki import hi" >nul 2>nul
 if %errorlevel% equ 0 goto :HI_ALREADY
 echo [TTS] Installing Hindi support (misaki[hi])...
-%PYTHON_CMD% -m pip install "misaki[hi]" >nul 2>nul
-if %errorlevel% equ 0 (echo [TTS]   Hindi -- OK) else (echo [TTS]   Hindi -- SKIPPED, install failed)
+%PYTHON_CMD% -m pip install "misaki[hi]" >nul 2>"%TEMP%\vn_pkg.tmp"
+if %errorlevel% equ 0 goto :HI_OK
+echo [TTS]   Hindi -- SKIPPED. pip error:
+type "%TEMP%\vn_pkg.tmp"
+echo [TTS]   To retry: pip install "misaki[hi]"
+goto :HI_DONE
+:HI_OK
+echo [TTS]   Hindi -- OK
 goto :HI_DONE
 :HI_ALREADY
 echo [TTS]   Hindi -- already installed
