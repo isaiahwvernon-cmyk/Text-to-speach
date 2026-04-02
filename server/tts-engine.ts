@@ -445,6 +445,7 @@ export async function sendPresetAnnouncement(
         codec: payload.codec as CodecName,
         chimeDelayMs: chimeEnabled ? chimeDelay : 1200,
         sessionTimeoutMs,
+        preempt: true,  // priority presets interrupt any active announcement
       });
     } else {
       const ext = payload.pgExtension || "";
@@ -456,6 +457,7 @@ export async function sendPresetAnnouncement(
         dtmfDelayMs: dtmfDelay,
         chimeDelayMs: chimeEnabled ? chimeDelay : 0,
         sessionTimeoutMs,
+        preempt: true,  // priority presets interrupt any active announcement
       });
     }
 

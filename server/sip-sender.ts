@@ -13,7 +13,25 @@
 
 import * as dgram from "dgram";
 import * as os from "os";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
+
+// ── Active-call preemption tracker ───────────────────────────────────────────
+// Allows a priority announcement to interrupt a currently-playing one.
+
+interface ActiveCallHandle {
+  abort: () => void;
+}
+
+let activeCallHandle: ActiveCallHandle | null = null;
+
+/** Kill the currently-playing call (if any). Safe to call with nothing active. */
+export function killActiveCall(): void {
+  if (activeCallHandle) {
+    console.log("[SIP] Preempting active call for priority announcement");
+    try { activeCallHandle.abort(); } catch {}
+    activeCallHandle = null;
+  }
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -95,6 +113,11 @@ export interface SipSendOptions {
    * Default: 300 000 ms (5 min) to support long announcements.
    */
   sessionTimeoutMs?: number;
+  /**
+   * If true, any currently-playing SIP call is killed before this one starts.
+   * Use for priority/preemptive announcements.
+   */
+  preempt?: boolean;
 }
 
 export interface SipSendResult {
@@ -115,7 +138,14 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     dtmfDelayMs = 500,
     ffmpegCmd = "ffmpeg",
     sessionTimeoutMs,
+    preempt = false,
   } = opts;
+
+  // Kill any active call before starting if preempt is requested
+  if (preempt) {
+    killActiveCall();
+    await sleep(300); // give the killed socket a moment to close
+  }
 
   const codecInfo = CODECS[codec];
   const localIp = getLocalIp(targetIp);
@@ -168,6 +198,9 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
   }
 
   // ── ffmpeg RTP stream ─────────────────────────────────────────────────────
+  // Exposed so the abort handle can kill the proc mid-stream.
+  let activeFfmpegProc: ChildProcess | null = null;
+
   function streamAudio(destIp: string, destPort: number): Promise<string | null> {
     return new Promise((resolve) => {
       const args = [
@@ -185,6 +218,8 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
 
       let stderr = "";
       const proc = spawn(ffmpegCmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+      activeFfmpegProc = proc;
+
       proc.stderr.on("data", (d: Buffer) => {
         const chunk = d.toString();
         stderr += chunk;
@@ -194,7 +229,8 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
         }
       });
       proc.on("close", (code) => {
-        if (code !== 0) {
+        activeFfmpegProc = null;
+        if (code !== 0 && code !== null) {
           console.error(`[SIP] ffmpeg exited ${code}: ${stderr.slice(-400)}`);
           resolve(`ffmpeg exited with code ${code}: ${stderr.slice(-300)}`);
         } else {
@@ -203,6 +239,7 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
         }
       });
       proc.on("error", (err) => {
+        activeFfmpegProc = null;
         console.error(`[SIP] ffmpeg spawn error: ${err.message}`);
         resolve(`ffmpeg error: ${err.message}`);
       });
@@ -220,9 +257,19 @@ export async function sendViaSip(opts: SipSendOptions): Promise<SipSendResult> {
     const finish = (success: boolean, detail: string) => {
       if (done) return;
       done = true;
+      // Unregister from the global active-call tracker
+      if (activeCallHandle?.abort === abortThisCall) activeCallHandle = null;
       try { socket.close(); } catch {}
       resolve({ success, detail });
     };
+
+    // Register an abort handle so a priority call can preempt us
+    const abortThisCall = () => {
+      done = true;
+      try { activeFfmpegProc?.kill("SIGTERM"); } catch {}
+      try { socket.close(); } catch {}
+    };
+    activeCallHandle = { abort: abortThisCall };
 
     const send = (msg: string) => {
       const buf = Buffer.from(msg);

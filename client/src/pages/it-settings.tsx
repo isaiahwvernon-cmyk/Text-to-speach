@@ -738,7 +738,7 @@ export default function ItSettingsPage() {
 
         {/* Preset form modal */}
         {showPresetForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">

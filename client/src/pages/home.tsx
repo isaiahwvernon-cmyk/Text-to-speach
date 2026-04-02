@@ -124,7 +124,7 @@ function AddContactDialog({ onAdd, onCancel, editContact }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -941,7 +941,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                   value={secondText}
                   onChange={(e) => setSecondText(e.target.value)}
                   placeholder={`Type the ${SUPPORTED_LANGUAGES.find((l) => l.code === secondLang)?.label ?? "second language"} announcement here…`}
-                  rows={2}
+                  rows={4}
                   className={INPUT_CLS + " resize-none"}
                   maxLength={2000}
                 />
@@ -1439,7 +1439,7 @@ function GlobalPresetsPanel({ contacts }: { contacts: Contact[] }) {
 
       {/* Play dialog */}
       {playingPreset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 bg-[#FF8200] rounded-2xl flex items-center justify-center">
