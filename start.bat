@@ -106,62 +106,49 @@ if %errorlevel% neq 0 (
 echo [TTS] Checking extra language packages...
 echo.
 
-:: Japanese — requires pyopenjtalk (use the prebuilt wheel for Windows)
+:: Japanese -- requires pyopenjtalk (prebuilt wheel for Windows)
 %PYTHON_CMD% -c "import pyopenjtalk" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [TTS] Installing Japanese support (pyopenjtalk-prebuilt)...
-    %PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>nul
-    if %errorlevel% equ 0 (
-        echo [TTS]   Japanese -- OK
-    ) else (
-        echo [TTS]   Japanese -- SKIPPED (install failed, Japanese voice unavailable^)
-    )
-) else (
-    echo [TTS]   Japanese -- already installed
-)
+if %errorlevel% equ 0 goto :JP_ALREADY
+echo [TTS] Installing Japanese support (pyopenjtalk-prebuilt)...
+%PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>nul
+if %errorlevel% equ 0 (echo [TTS]   Japanese -- OK) else (echo [TTS]   Japanese -- SKIPPED, install failed)
+goto :JP_DONE
+:JP_ALREADY
+echo [TTS]   Japanese -- already installed
+:JP_DONE
 
-:: Mandarin Chinese — requires jieba
+:: Mandarin Chinese -- requires jieba
 %PYTHON_CMD% -c "import jieba" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [TTS] Installing Mandarin support (jieba)...
-    %PYTHON_CMD% -m pip install jieba >nul 2>nul
-    if %errorlevel% equ 0 (
-        echo [TTS]   Mandarin -- OK
-    ) else (
-        echo [TTS]   Mandarin -- SKIPPED (install failed, Mandarin voice unavailable^)
-    )
-) else (
-    echo [TTS]   Mandarin -- already installed
-)
+if %errorlevel% equ 0 goto :ZH_ALREADY
+echo [TTS] Installing Mandarin support (jieba)...
+%PYTHON_CMD% -m pip install jieba >nul 2>nul
+if %errorlevel% equ 0 (echo [TTS]   Mandarin -- OK) else (echo [TTS]   Mandarin -- SKIPPED, install failed)
+goto :ZH_DONE
+:ZH_ALREADY
+echo [TTS]   Mandarin -- already installed
+:ZH_DONE
 
-:: Korean — requires misaki[ko]
+:: Korean -- requires misaki[ko]
 %PYTHON_CMD% -c "import misaki" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [TTS] Installing Korean support (misaki[ko])...
-    %PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>nul
-    if %errorlevel% equ 0 (
-        echo [TTS]   Korean -- OK
-    ) else (
-        echo [TTS]   Korean -- SKIPPED (install failed, Korean voice unavailable^)
-    )
-) else (
-    echo [TTS]   Korean -- already installed
-)
+if %errorlevel% equ 0 goto :KO_ALREADY
+echo [TTS] Installing Korean support (misaki[ko])...
+%PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>nul
+if %errorlevel% equ 0 (echo [TTS]   Korean -- OK) else (echo [TTS]   Korean -- SKIPPED, install failed)
+goto :KO_DONE
+:KO_ALREADY
+echo [TTS]   Korean -- already installed
+:KO_DONE
 
-:: Hindi — requires misaki[hi]
-:: (misaki already checked above; just verify the Hindi extras)
+:: Hindi -- requires misaki[hi]
 %PYTHON_CMD% -c "from misaki import hi" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [TTS] Installing Hindi support (misaki[hi])...
-    %PYTHON_CMD% -m pip install "misaki[hi]" >nul 2>nul
-    if %errorlevel% equ 0 (
-        echo [TTS]   Hindi -- OK
-    ) else (
-        echo [TTS]   Hindi -- SKIPPED (install failed, Hindi voice unavailable^)
-    )
-) else (
-    echo [TTS]   Hindi -- already installed
-)
+if %errorlevel% equ 0 goto :HI_ALREADY
+echo [TTS] Installing Hindi support (misaki[hi])...
+%PYTHON_CMD% -m pip install "misaki[hi]" >nul 2>nul
+if %errorlevel% equ 0 (echo [TTS]   Hindi -- OK) else (echo [TTS]   Hindi -- SKIPPED, install failed)
+goto :HI_DONE
+:HI_ALREADY
+echo [TTS]   Hindi -- already installed
+:HI_DONE
 
 echo.
 
