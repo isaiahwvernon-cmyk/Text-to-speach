@@ -171,13 +171,29 @@ async function generateSpeechToFile(
   return new Promise((resolve, reject) => {
     const proc = spawn(resolvedPythonCmd!, args);
 
-    let stderr = "";
-    proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    let stderrRaw = "";
+    proc.stderr.on("data", (d: Buffer) => (stderrRaw += d.toString()));
     proc.on("close", (code: number) => {
       if (code === 0 && fs.existsSync(outputPath)) {
         resolve();
       } else {
-        reject(new Error(`TTS generation failed: ${stderr || "unknown error"}`));
+        // Filter out noisy Python/PyTorch/HuggingFace warning lines so the
+        // error shown to the user is the clean message from our script.
+        const NOISE_PATTERNS = [
+          /UserWarning/i, /FutureWarning/i, /DeprecationWarning/i,
+          /weight_norm/i, /HF Hub/i, /HF_TOKEN/i, /huggingface/i,
+          /unauthenticated/i, /rate limit/i, /super\(\)/i, /\.py:\d+:/,
+          /Traceback \(most recent/i, /File ".*\.py"/i,
+        ];
+        const cleanLines = stderrRaw
+          .split("\n")
+          .filter((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            return !NOISE_PATTERNS.some((p) => p.test(trimmed));
+          });
+        const cleanErr = cleanLines.join(" ").trim() || stderrRaw.trim();
+        reject(new Error(`TTS generation failed: ${cleanErr || "unknown error"}`));
       }
     });
     proc.on("error", (err: Error) => reject(err));

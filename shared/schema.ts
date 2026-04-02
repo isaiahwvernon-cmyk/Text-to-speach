@@ -108,16 +108,16 @@ export type UpdateUserPayload = z.infer<typeof updateUserSchema>;
 
 // ─── Language Support ─────────────────────────────────────────────────────────
 export const SUPPORTED_LANGUAGES = [
-  { code: "en-us", label: "English (US)" },
-  { code: "en-gb", label: "English (UK)" },
-  { code: "fr",    label: "French" },
-  { code: "es",    label: "Spanish" },
-  { code: "ja",    label: "Japanese" },
-  { code: "zh",    label: "Mandarin" },
-  { code: "ko",    label: "Korean" },
-  { code: "pt",    label: "Portuguese" },
-  { code: "hi",    label: "Hindi" },
-  { code: "it",    label: "Italian" },
+  { code: "en-us", label: "English (US)", extraPkg: null },
+  { code: "en-gb", label: "English (UK)", extraPkg: null },
+  { code: "fr",    label: "French",       extraPkg: null },
+  { code: "es",    label: "Spanish",      extraPkg: null },
+  { code: "it",    label: "Italian",      extraPkg: null },
+  { code: "pt",    label: "Portuguese",   extraPkg: null },
+  { code: "ja",    label: "Japanese",     extraPkg: "pyopenjtalk-prebuilt" },
+  { code: "zh",    label: "Mandarin",     extraPkg: "jieba" },
+  { code: "ko",    label: "Korean",       extraPkg: "misaki[ko]" },
+  { code: "hi",    label: "Hindi",        extraPkg: "misaki[hi]" },
 ] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number]["code"];
 

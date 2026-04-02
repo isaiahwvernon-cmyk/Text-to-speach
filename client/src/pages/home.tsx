@@ -898,7 +898,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                     className={SELECT_CLS}
                   >
                     {SUPPORTED_LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>{l.label}</option>
+                      <option key={l.code} value={l.code}>{l.label}{l.extraPkg ? " ⚠" : ""}</option>
                     ))}
                   </select>
                 </div>
@@ -911,11 +911,27 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
                     className={SELECT_CLS}
                   >
                     {SUPPORTED_LANGUAGES.filter((l) => l.code !== primaryLang).map((l) => (
-                      <option key={l.code} value={l.code}>{l.label}</option>
+                      <option key={l.code} value={l.code}>{l.label}{l.extraPkg ? " ⚠" : ""}</option>
                     ))}
                   </select>
                 </div>
               </div>
+              {(() => {
+                const pkgNeeded = [
+                  SUPPORTED_LANGUAGES.find((l) => l.code === primaryLang)?.extraPkg,
+                  SUPPORTED_LANGUAGES.find((l) => l.code === secondLang)?.extraPkg,
+                ].filter(Boolean);
+                return pkgNeeded.length > 0 ? (
+                  <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      One or more selected languages require extra Python packages:{" "}
+                      <span className="font-mono font-semibold">{pkgNeeded.join(", ")}</span>.{" "}
+                      Install with <span className="font-mono">pip install {pkgNeeded.join(" ")}</span> if the announcement fails.
+                    </span>
+                  </div>
+                ) : null;
+              })()}
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Second announcement text <span className="text-slate-400 font-normal">({secondLang})</span>

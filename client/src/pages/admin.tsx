@@ -11,7 +11,7 @@ import {
   ArrowLeft, PlusCircle, Pencil, Trash2, X, Users, Radio,
   Shield, ShieldCheck, Wrench, Eye, EyeOff, MicOff,
   Wifi, PhoneCall, UserCheck, Zap, RefreshCw, CheckCircle2,
-  AlertCircle, Loader2, Lock, Unlock, BookOpen, Globe,
+  AlertCircle, AlertTriangle, Loader2, Lock, Unlock, BookOpen, Globe,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -543,7 +543,7 @@ function PresetFormDialog({ onSave, onCancel, editPreset }: {
                     <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">First language</label>
                     <select value={primaryLang} onChange={(e) => setPrimaryLang(e.target.value)} className={SELECT_CLS}>
                       {SUPPORTED_LANGUAGES.map((l) => (
-                        <option key={l.code} value={l.code}>{l.label}</option>
+                        <option key={l.code} value={l.code}>{l.label}{l.extraPkg ? " ⚠" : ""}</option>
                       ))}
                     </select>
                   </div>
@@ -551,11 +551,27 @@ function PresetFormDialog({ onSave, onCancel, editPreset }: {
                     <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Second language</label>
                     <select value={secondLang} onChange={(e) => setSecondLang(e.target.value)} className={SELECT_CLS}>
                       {SUPPORTED_LANGUAGES.filter((l) => l.code !== primaryLang).map((l) => (
-                        <option key={l.code} value={l.code}>{l.label}</option>
+                        <option key={l.code} value={l.code}>{l.label}{l.extraPkg ? " ⚠" : ""}</option>
                       ))}
                     </select>
                   </div>
                 </div>
+                {(() => {
+                  const pkgNeeded = [
+                    SUPPORTED_LANGUAGES.find((l) => l.code === primaryLang)?.extraPkg,
+                    SUPPORTED_LANGUAGES.find((l) => l.code === secondLang)?.extraPkg,
+                  ].filter(Boolean);
+                  return pkgNeeded.length > 0 ? (
+                    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>
+                        Requires extra package(s):{" "}
+                        <span className="font-mono font-semibold">{pkgNeeded.join(", ")}</span>.{" "}
+                        Run <span className="font-mono">pip install {pkgNeeded.join(" ")}</span> on the server if audio fails.
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
                 <div>
                   <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                     Second announcement text <span className="font-normal">({secondLang})</span>
