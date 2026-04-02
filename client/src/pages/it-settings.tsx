@@ -1,15 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { SystemSettings, LogEntry, PgGateway } from "@shared/schema";
+import type { SystemSettings, LogEntry, PgGateway, GlobalPreset } from "@shared/schema";
 import {
   ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
   Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight, Plus,
-  Download, Upload,
+  Download, Upload, Zap, X, Pencil,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -75,23 +75,110 @@ export default function ItSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<any>(null);
+  const [presets, setPresets] = useState<GlobalPreset[]>([]);
+  const [showPresetForm, setShowPresetForm] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<GlobalPreset | null>(null);
+  const [presetName, setPresetName] = useState("");
+  const [presetText, setPresetText] = useState("");
+  const [presetSpeed, setPresetSpeed] = useState(1.0);
+  const [presetSaving, setPresetSaving] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function loadAll() {
     setLoading(true);
     try {
-      const [settingsRes, logsRes, statusRes] = await Promise.all([
+      const [settingsRes, logsRes, statusRes, presetsRes] = await Promise.all([
         apiFetch("/api/settings"),
         apiFetch("/api/logs?limit=100"),
         apiFetch("/api/system/status"),
+        apiFetch("/api/presets"),
       ]);
       if (settingsRes.ok) setSettings(await settingsRes.json());
       if (logsRes.ok) setLogs(await logsRes.json());
       if (statusRes.ok) setStatus(await statusRes.json());
+      if (presetsRes.ok) setPresets(await presetsRes.json());
     } catch {}
     setLoading(false);
   }
 
+  async function refreshPresets() {
+    try {
+      const res = await apiFetch("/api/presets");
+      if (res.ok) setPresets(await res.json());
+    } catch {}
+  }
+
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    const hasGenerating = presets.some((p) => !p.audioReady && !p.audioError);
+    if (hasGenerating) {
+      if (!pollRef.current) pollRef.current = setInterval(refreshPresets, 3000);
+    } else {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [presets]);
+
+  function openPresetForm(p?: GlobalPreset) {
+    setEditingPreset(p ?? null);
+    setPresetName(p?.name ?? "");
+    setPresetText(p?.text ?? "");
+    setPresetSpeed(p?.voiceSpeed ?? 1.0);
+    setShowPresetForm(true);
+  }
+
+  async function handleSavePreset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!presetName.trim() || !presetText.trim()) return;
+    setPresetSaving(true);
+    try {
+      const url = editingPreset ? `/api/presets/${editingPreset.id}` : "/api/presets";
+      const method = editingPreset ? "PUT" : "POST";
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify({ name: presetName.trim(), text: presetText.trim(), voiceSpeed: presetSpeed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await refreshPresets();
+      setShowPresetForm(false);
+      toast({ title: editingPreset ? "Preset updated — regenerating audio…" : "Preset created — generating audio…" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setPresetSaving(false);
+    }
+  }
+
+  async function handleDeletePreset(p: GlobalPreset) {
+    if (!confirm(`Delete preset "${p.name}"? The audio file will also be removed.`)) return;
+    try {
+      const res = await apiFetch(`/api/presets/${p.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await refreshPresets();
+      toast({ title: "Preset deleted" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleRegeneratePreset(p: GlobalPreset) {
+    try {
+      await apiFetch(`/api/presets/${p.id}/regenerate`, { method: "POST" });
+      await refreshPresets();
+      toast({ title: "Regenerating audio…" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
 
   async function handleSave() {
     if (!settings) return;
@@ -562,6 +649,116 @@ export default function ItSettingsPage() {
               </div>
             </Section>
           </>
+        )}
+
+        {/* Global Presets */}
+        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
+                <Zap className="w-4 h-4 text-[#FF8200]" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 dark:text-white">Global Presets</span>
+                <span className="text-xs text-slate-400 ml-2">({presets.length}/10)</span>
+              </div>
+            </div>
+            {presets.length < 10 && (
+              <button
+                data-testid="button-add-preset"
+                onClick={() => openPresetForm()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm bg-[#FF8200] text-white hover:bg-[#e07200] font-semibold"
+              >
+                <Plus className="w-4 h-4" /> New Preset
+              </button>
+            )}
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {presets.length === 0 ? (
+              <div className="text-center py-10 text-slate-400 text-sm">
+                <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                No presets yet. Create one to get priority announcements.
+              </div>
+            ) : presets.map((p) => (
+              <div key={p.id} className="px-5 py-4 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-semibold text-slate-900 dark:text-white text-sm">{p.name}</span>
+                    {p.audioReady ? (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Ready
+                      </span>
+                    ) : p.audioError ? (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
+                        <AlertCircle className="w-3 h-3" /> Error
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Generating…
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-400">{p.allowedUserIds === null ? "All users" : `${p.allowedUserIds.length} users`}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{p.text}</p>
+                  {p.audioError && <p className="text-xs text-red-500 mt-0.5">{p.audioError}</p>}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {(!p.audioReady || p.audioError) && (
+                    <button onClick={() => handleRegeneratePreset(p)} title="Regenerate" className="p-2 rounded-xl hover:bg-[#FF8200]/10 text-[#FF8200]">
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button onClick={() => openPresetForm(p)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleDeletePreset(p)} className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Preset form modal */}
+        {showPresetForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-[#FF8200]" />
+                  {editingPreset ? "Edit Preset" : "New Global Preset"}
+                </h2>
+                <button onClick={() => setShowPresetForm(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleSavePreset} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Preset Name</label>
+                  <input value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="e.g. Emergency Alert" required className={INPUT_CLS} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Announcement Text</label>
+                  <textarea value={presetText} onChange={(e) => setPresetText(e.target.value)} placeholder="Enter the announcement text…" required rows={4} className={INPUT_CLS + " resize-none"} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Voice Speed: <span className="text-[#FF8200] font-bold">{presetSpeed.toFixed(1)}×</span>
+                  </label>
+                  <div className="px-1">
+                    <input type="range" min={0.5} max={2.0} step={0.1} value={presetSpeed} onChange={(e) => setPresetSpeed(Number(e.target.value))} className="w-full accent-[#FF8200]" />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setShowPresetForm(false)} className="flex-1 rounded-xl">Cancel</Button>
+                  <Button type="submit" disabled={presetSaving} className="flex-1 bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl">
+                    {presetSaving ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Saving…</> : editingPreset ? "Save Changes" : "Create Preset"}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
 
         {/* Logs Viewer */}

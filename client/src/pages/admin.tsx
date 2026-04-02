@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { User, Contact } from "@shared/schema";
+import type { User, Contact, GlobalPreset } from "@shared/schema";
 import {
   ArrowLeft, PlusCircle, Pencil, Trash2, X, Users, Radio,
   Shield, ShieldCheck, Wrench, Eye, EyeOff, MicOff,
-  Wifi, PhoneCall, UserCheck,
+  Wifi, PhoneCall, UserCheck, Zap, RefreshCw, CheckCircle2,
+  AlertCircle, Loader2, Lock, Unlock, BookOpen,
 } from "lucide-react";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
@@ -448,34 +449,184 @@ function ContactFormDialog({ onSave, onCancel, editContact }: {
   );
 }
 
+// ─── Global Preset Form ───────────────────────────────────────────────────────
+function PresetFormDialog({ onSave, onCancel, editPreset }: {
+  onSave: (data: any) => Promise<void>;
+  onCancel: () => void;
+  editPreset?: GlobalPreset | null;
+}) {
+  const [name, setName] = useState(editPreset?.name || "");
+  const [text, setText] = useState(editPreset?.text || "");
+  const [voiceSpeed, setVoiceSpeed] = useState(editPreset?.voiceSpeed ?? 1.0);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !text.trim()) return;
+    setSaving(true);
+    await onSave({ name: name.trim(), text: text.trim(), voiceSpeed });
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#FF8200]/10 rounded-xl flex items-center justify-center">
+              <Zap className="w-5 h-5 text-[#FF8200]" />
+            </div>
+            <h2 className="font-bold text-lg text-slate-900 dark:text-white">
+              {editPreset ? "Edit Global Preset" : "New Global Preset"}
+            </h2>
+          </div>
+          <button onClick={onCancel} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Preset Name</label>
+            <input data-testid="input-preset-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Emergency Alert" required className={INPUT_CLS} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Announcement Text</label>
+            <textarea data-testid="input-preset-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Enter the announcement text…" required rows={4} className={INPUT_CLS + " resize-none"} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+              Voice Speed: <span className="text-[#FF8200] font-bold">{voiceSpeed.toFixed(1)}×</span>
+            </label>
+            <div className="px-1">
+              <input type="range" min={0.5} max={2.0} step={0.1} value={voiceSpeed} onChange={(e) => setVoiceSpeed(Number(e.target.value))} className="w-full accent-[#FF8200]" />
+            </div>
+            <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>0.5×</span><span>2.0×</span></div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onCancel} className="flex-1 rounded-xl">Cancel</Button>
+            <Button type="submit" disabled={saving} className="flex-1 bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl">
+              {saving ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Saving…</> : editPreset ? "Save Changes" : "Create Preset"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Page ───────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [tab, setTab] = useState<"users" | "contacts">("users");
+  const [tab, setTab] = useState<"users" | "contacts" | "presets">("users");
   const [users, setUsers] = useState<User[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [presets, setPresets] = useState<GlobalPreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [showPresetForm, setShowPresetForm] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<GlobalPreset | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [usersRes, contactsRes] = await Promise.all([
+      const [usersRes, contactsRes, presetsRes] = await Promise.all([
         apiFetch("/api/users"),
         apiFetch("/api/rooms"),
+        apiFetch("/api/presets"),
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
       if (contactsRes.ok) setContacts(await contactsRes.json());
+      if (presetsRes.ok) setPresets(await presetsRes.json());
     } catch {}
     setLoading(false);
   }
 
+  async function refreshPresets() {
+    try {
+      const res = await apiFetch("/api/presets");
+      if (res.ok) setPresets(await res.json());
+    } catch {}
+  }
+
   useEffect(() => { loadData(); }, []);
+
+  // Poll preset audio status while any preset is generating
+  useEffect(() => {
+    const hasGenerating = presets.some((p) => !p.audioReady && !p.audioError);
+    if (hasGenerating) {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(refreshPresets, 3000);
+      }
+    } else {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [presets]);
+
+  // ── Preset CRUD ──
+  async function handleSavePreset(data: any) {
+    try {
+      const isEdit = !!editingPreset;
+      const url = isEdit ? `/api/presets/${editingPreset!.id}` : "/api/presets";
+      const method = isEdit ? "PUT" : "POST";
+      const res = await apiFetch(url, { method, body: JSON.stringify(data) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await refreshPresets();
+      setShowPresetForm(false);
+      setEditingPreset(null);
+      toast({ title: isEdit ? "Preset updated — regenerating audio…" : "Preset created — generating audio…" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleDeletePreset(p: GlobalPreset) {
+    if (!confirm(`Delete preset "${p.name}"? The audio file will also be removed.`)) return;
+    try {
+      const res = await apiFetch(`/api/presets/${p.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        toast({ title: "Error", description: err.error, variant: "destructive" });
+        return;
+      }
+      await refreshPresets();
+      toast({ title: "Preset deleted" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleRegeneratePreset(p: GlobalPreset) {
+    try {
+      await apiFetch(`/api/presets/${p.id}/regenerate`, { method: "POST" });
+      await refreshPresets();
+      toast({ title: "Regenerating audio…" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handlePresetAccess(presetId: string, allowedUserIds: string[] | null) {
+    try {
+      await apiFetch(`/api/presets/${presetId}/access`, {
+        method: "PATCH",
+        body: JSON.stringify({ allowedUserIds }),
+      });
+      await refreshPresets();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  }
 
   // ── User CRUD ──
   async function handleSaveUser(data: any) {
@@ -576,7 +727,7 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="ml-auto">
-            {tab === "users" ? (
+            {tab === "users" && (
               <Button
                 data-testid="button-add-user"
                 onClick={() => { setEditingUser(null); setShowUserForm(true); }}
@@ -584,13 +735,23 @@ export default function AdminPage() {
               >
                 <PlusCircle className="w-4 h-4 mr-1.5" /> Add User
               </Button>
-            ) : (
+            )}
+            {tab === "contacts" && (
               <Button
                 data-testid="button-add-contact"
                 onClick={() => { setEditingContact(null); setShowContactForm(true); }}
                 className="bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl text-sm font-semibold"
               >
                 <PlusCircle className="w-4 h-4 mr-1.5" /> Add Contact
+              </Button>
+            )}
+            {tab === "presets" && presets.length < 10 && (
+              <Button
+                data-testid="button-add-preset"
+                onClick={() => { setEditingPreset(null); setShowPresetForm(true); }}
+                className="bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl text-sm font-semibold"
+              >
+                <PlusCircle className="w-4 h-4 mr-1.5" /> New Preset
               </Button>
             )}
           </div>
@@ -601,9 +762,10 @@ export default function AdminPage() {
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
         <div className="max-w-4xl mx-auto px-4 flex gap-1 pt-1">
           {[
-            { key: "users", label: "Users", icon: Users },
-            { key: "contacts", label: "Contacts", icon: Radio },
-          ].map(({ key, label, icon: Icon }) => (
+            { key: "users", label: "Users", icon: Users, count: users.length },
+            { key: "contacts", label: "Contacts", icon: Radio, count: contacts.length },
+            { key: "presets", label: "Global Presets", icon: Zap, count: presets.length },
+          ].map(({ key, label, icon: Icon, count }) => (
             <button
               key={key}
               onClick={() => setTab(key as any)}
@@ -613,7 +775,7 @@ export default function AdminPage() {
             >
               <Icon className="w-4 h-4" /> {label}
               <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${tab === key ? "bg-[#FF8200]/10 text-[#FF8200]" : "bg-slate-100 dark:bg-slate-700 text-slate-500"}`}>
-                {key === "users" ? users.length : contacts.length}
+                {count}
               </span>
             </button>
           ))}
@@ -690,7 +852,7 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : tab === "contacts" ? (
           <div className="space-y-3">
             {contacts.map((c) => {
               const usersWithAccess = users.filter((u) => u.assignedRoomIds?.includes(c.id));
@@ -760,7 +922,156 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-        )}
+        ) : tab === "presets" ? (
+          <div className="space-y-4">
+            {/* Info banner */}
+            <div className="bg-[#FF8200]/5 border border-[#FF8200]/20 rounded-2xl px-5 py-4 flex gap-3">
+              <Zap className="w-5 h-5 text-[#FF8200] flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                <span className="font-semibold text-slate-800 dark:text-white">Global Presets</span> are pre-generated announcements that play with <span className="font-semibold text-[#FF8200]">higher priority</span> than regular TTS messages and skip the generation wait. Up to 10 presets. You control which users can use each one.
+              </div>
+            </div>
+
+            {presets.length === 10 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl px-5 py-3 text-sm text-amber-700 dark:text-amber-300">
+                Maximum of 10 presets reached. Delete one to add a new preset.
+              </div>
+            )}
+
+            {presets.map((p) => {
+              const regularUsers = users.filter((u) => u.role === "user");
+              const accessAll = p.allowedUserIds === null;
+
+              return (
+                <Card key={p.id} className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-2xl" data-testid={`card-preset-${p.id}`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 bg-[#FF8200]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Zap className="w-5 h-5 text-[#FF8200]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-bold text-slate-900 dark:text-white">{p.name}</span>
+                            {p.audioReady ? (
+                              <span className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">
+                                <CheckCircle2 className="w-3 h-3" /> Ready
+                              </span>
+                            ) : p.audioError ? (
+                              <span className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
+                                <AlertCircle className="w-3 h-3" /> Error
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Generating…
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{p.text}</p>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                            <span>Speed: {p.voiceSpeed.toFixed(1)}×</span>
+                            <span>By: {p.createdBy}</span>
+                            {p.audioGeneratedAt && <span>Generated: {new Date(p.audioGeneratedAt).toLocaleDateString()}</span>}
+                          </div>
+                          {p.audioError && (
+                            <p className="text-xs text-red-500 mt-1">{p.audioError}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {(!p.audioReady || p.audioError) && (
+                          <button
+                            data-testid={`button-regenerate-preset-${p.id}`}
+                            onClick={() => handleRegeneratePreset(p)}
+                            title="Regenerate audio"
+                            className="p-2 rounded-xl hover:bg-[#FF8200]/10 text-[#FF8200]"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          data-testid={`button-edit-preset-${p.id}`}
+                          onClick={() => { setEditingPreset(p); setShowPresetForm(true); }}
+                          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          data-testid={`button-delete-preset-${p.id}`}
+                          onClick={() => handleDeletePreset(p)}
+                          className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Access control */}
+                    <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {accessAll
+                            ? <Unlock className="w-4 h-4 text-green-500" />
+                            : <Lock className="w-4 h-4 text-slate-400" />}
+                          <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            {accessAll ? "All users can play this preset" : "Restricted access"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handlePresetAccess(p.id, accessAll ? [] : null)}
+                          className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${accessAll
+                            ? "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                            : "bg-green-50 dark:bg-green-900/20 text-green-600 hover:bg-green-100"}`}
+                        >
+                          {accessAll ? "Restrict access" : "Allow all"}
+                        </button>
+                      </div>
+
+                      {!accessAll && regularUsers.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {regularUsers.map((u) => {
+                            const hasAccess = p.allowedUserIds?.includes(u.id) ?? false;
+                            const toggle = () => {
+                              const current = p.allowedUserIds ?? [];
+                              const next = hasAccess
+                                ? current.filter((id) => id !== u.id)
+                                : [...current, u.id];
+                              handlePresetAccess(p.id, next);
+                            };
+                            return (
+                              <button
+                                key={u.id}
+                                onClick={toggle}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${hasAccess
+                                  ? "bg-[#FF8200]/10 border-[#FF8200]/30 text-[#FF8200]"
+                                  : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500"}`}
+                              >
+                                <UserCheck className="w-3 h-3" />
+                                {u.displayName}
+                                {hasAccess && <CheckCircle2 className="w-3 h-3" />}
+                              </button>
+                            );
+                          })}
+                          {regularUsers.length === 0 && (
+                            <p className="text-xs text-slate-400">No regular users to assign.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {presets.length === 0 && (
+              <div className="text-center py-16 text-slate-400">
+                <Zap className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">No global presets yet</p>
+                <p className="text-sm mt-1">Create a preset to get instant priority announcements.</p>
+              </div>
+            )}
+          </div>
+        ) : null}
       </main>
 
       {showUserForm && (
@@ -777,6 +1088,14 @@ export default function AdminPage() {
           editContact={editingContact}
           onSave={handleSaveContact}
           onCancel={() => { setShowContactForm(false); setEditingContact(null); }}
+        />
+      )}
+
+      {showPresetForm && (
+        <PresetFormDialog
+          editPreset={editingPreset}
+          onSave={handleSavePreset}
+          onCancel={() => { setShowPresetForm(false); setEditingPreset(null); }}
         />
       )}
     </div>

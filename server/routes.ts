@@ -29,10 +29,25 @@ import {
   getLogs,
   clearLogs,
   addLog,
+  getAllPresets,
+  getPresetById,
+  createPreset,
+  updatePreset,
+  deletePreset,
 } from "./db.js";
 import { signToken, requireAuth, requireRole } from "./auth.js";
-import { sendTtsAnnouncement, getTtsStatus } from "./tts-engine.js";
+import {
+  sendTtsAnnouncement,
+  getTtsStatus,
+  generatePresetAudio,
+  sendPresetAnnouncement,
+  deletePresetAudio,
+} from "./tts-engine.js";
 import { enqueueJob, getJobStatus, getQueueLength } from "./tts-queue.js";
+import {
+  createGlobalPresetSchema,
+  presetPlaySchema,
+} from "@shared/schema";
 
 const ROOMS_CONFIG_PATH = path.resolve(process.cwd(), "rooms.json");
 
@@ -921,6 +936,234 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     clearLogs();
     addLog("info", "Logs cleared", (req as any).auth.username);
     res.json({ ok: true });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GLOBAL PRESETS (admin + it create/manage; all users can list/play)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // GET /api/presets — list all presets (filtered by access for regular users)
+  app.get("/api/presets", requireAuth, (req, res) => {
+    const auth = (req as any).auth;
+    const presets = getAllPresets();
+
+    if (auth.role === "admin" || auth.role === "it") {
+      return res.json(presets);
+    }
+
+    // Regular users: filter by allowedUserIds
+    const visible = presets.filter(
+      (p) => p.allowedUserIds === null || p.allowedUserIds.includes(auth.userId)
+    );
+    res.json(visible);
+  });
+
+  // POST /api/presets — create preset (admin/it), max 10
+  app.post("/api/presets", requireAuth, requireRole("admin", "it"), async (req, res) => {
+    const parsed = createGlobalPresetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid preset data", details: parsed.error.issues });
+    }
+
+    const existing = getAllPresets();
+    if (existing.length >= 10) {
+      return res.status(400).json({ error: "Maximum of 10 global presets allowed. Delete one first." });
+    }
+
+    const auth = (req as any).auth;
+    const { name, text, voiceSpeed = 1.0, voicePitch = 1.0, allowedUserIds = null } = parsed.data;
+
+    const preset = createPreset({
+      name,
+      text,
+      voiceSpeed,
+      voicePitch,
+      createdBy: auth.username,
+      createdAt: new Date().toISOString(),
+      allowedUserIds,
+      audioReady: false,
+    });
+
+    addLog("info", `Global preset "${name}" created`, auth.username);
+
+    // Kick off audio generation in the background
+    generatePresetAudio(preset.id, text, voiceSpeed, voicePitch)
+      .then(() => {
+        updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
+        console.log(`[Preset] Audio ready for "${name}" (${preset.id})`);
+      })
+      .catch((err: any) => {
+        updatePreset(preset.id, { audioReady: false, audioError: err.message });
+        console.error(`[Preset] Audio generation failed for "${name}": ${err.message}`);
+      });
+
+    res.status(201).json(preset);
+  });
+
+  // PUT /api/presets/:id — update preset text/name/voice (admin/it)
+  app.put("/api/presets/:id", requireAuth, requireRole("admin", "it"), async (req, res) => {
+    const preset = getPresetById(req.params.id);
+    if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+    const parsed = createGlobalPresetSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid data", details: parsed.error.issues });
+    }
+
+    const auth = (req as any).auth;
+    const updates = parsed.data;
+    const textChanged = updates.text !== undefined && updates.text !== preset.text;
+    const voiceChanged =
+      (updates.voiceSpeed !== undefined && updates.voiceSpeed !== preset.voiceSpeed) ||
+      (updates.voicePitch !== undefined && updates.voicePitch !== preset.voicePitch);
+
+    const updated = updatePreset(preset.id, {
+      ...updates,
+      ...(textChanged || voiceChanged ? { audioReady: false, audioError: undefined } : {}),
+    });
+
+    if (textChanged || voiceChanged) {
+      deletePresetAudio(preset.id);
+      const speed = updates.voiceSpeed ?? preset.voiceSpeed;
+      const pitch = updates.voicePitch ?? preset.voicePitch;
+      const text = updates.text ?? preset.text;
+
+      generatePresetAudio(preset.id, text, speed, pitch)
+        .then(() => {
+          updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
+        })
+        .catch((err: any) => {
+          updatePreset(preset.id, { audioReady: false, audioError: err.message });
+        });
+    }
+
+    addLog("info", `Global preset "${updated!.name}" updated`, auth.username);
+    res.json(updated);
+  });
+
+  // PATCH /api/presets/:id/access — update user access list (admin only)
+  app.patch("/api/presets/:id/access", requireAuth, requireRole("admin"), (req, res) => {
+    const preset = getPresetById(req.params.id);
+    if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+    const schema = z.object({
+      allowedUserIds: z.array(z.string()).nullable(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid access data" });
+
+    const updated = updatePreset(preset.id, { allowedUserIds: parsed.data.allowedUserIds });
+    addLog("info", `Preset "${preset.name}" access updated`, (req as any).auth.username);
+    res.json(updated);
+  });
+
+  // POST /api/presets/:id/regenerate — re-generate audio (admin/it)
+  app.post("/api/presets/:id/regenerate", requireAuth, requireRole("admin", "it"), async (req, res) => {
+    const preset = getPresetById(req.params.id);
+    if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+    updatePreset(preset.id, { audioReady: false, audioError: undefined });
+    deletePresetAudio(preset.id);
+
+    generatePresetAudio(preset.id, preset.text, preset.voiceSpeed, preset.voicePitch)
+      .then(() => {
+        updatePreset(preset.id, { audioReady: true, audioGeneratedAt: new Date().toISOString(), audioError: undefined });
+      })
+      .catch((err: any) => {
+        updatePreset(preset.id, { audioReady: false, audioError: err.message });
+      });
+
+    addLog("info", `Preset "${preset.name}" audio regeneration started`, (req as any).auth.username);
+    res.json({ ok: true, message: "Audio regeneration started" });
+  });
+
+  // DELETE /api/presets/:id — delete preset + audio file (admin/it)
+  app.delete("/api/presets/:id", requireAuth, requireRole("admin", "it"), (req, res) => {
+    const preset = getPresetById(req.params.id);
+    if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+    deletePreset(preset.id);
+    deletePresetAudio(preset.id);
+
+    addLog("info", `Global preset "${preset.name}" deleted`, (req as any).auth.username);
+    res.json({ ok: true });
+  });
+
+  // POST /api/presets/:id/play — play preset with HIGH priority
+  app.post("/api/presets/:id/play", requireAuth, async (req, res) => {
+    const auth = (req as any).auth;
+    const allPresets = getAllPresets();
+    const preset = allPresets.find((p) => p.id === req.params.id);
+    if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+    // Check access
+    if (auth.role === "user") {
+      if (preset.allowedUserIds !== null && !preset.allowedUserIds.includes(auth.userId)) {
+        return res.status(403).json({ error: "You do not have access to this preset" });
+      }
+    }
+
+    if (!preset.audioReady) {
+      return res.status(400).json({ error: "Preset audio is not ready yet. Please wait for generation to complete." });
+    }
+
+    const parsed = presetPlaySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid play data", details: parsed.error.issues });
+    }
+
+    const payload = parsed.data;
+
+    // Resolve contact if contactId supplied
+    if (payload.contactId && !payload.targetAddress) {
+      const rooms = readRoomsConfig();
+      const contact = rooms.find((r: any) => r.id === payload.contactId);
+      if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+      if (contact.mode === "direct") {
+        const firstSpeaker = contact.speakers?.[0];
+        if (!firstSpeaker?.ipAddress) return res.status(400).json({ error: "Contact has no IP address" });
+        payload.mode = "direct";
+        payload.targetAddress = firstSpeaker.ipAddress;
+      } else {
+        const settings = getSettings();
+        const pg = contact.pgId
+          ? settings.pgs.find((g: any) => g.id === contact.pgId)
+          : settings.pgs[0];
+        if (!pg?.address) return res.status(400).json({ error: "PG gateway not configured" });
+        payload.mode = "pg";
+        payload.targetAddress = pg.address;
+        if (!payload.pgExtension) payload.pgExtension = contact.pgExtension || pg.defaultExtension || "";
+        if (!payload.codec) payload.codec = contact.codec || "PCMU";
+      }
+    }
+
+    if (!payload.targetAddress) {
+      return res.status(400).json({ error: "No target address. Provide contactId or targetAddress." });
+    }
+    if (!payload.mode) {
+      return res.status(400).json({ error: "No mode specified. Provide contactId or mode." });
+    }
+
+    const jobId = enqueueJob({
+      userId: auth.userId,
+      username: auth.username,
+      contactName: preset.name,
+      textPreview: preset.text.slice(0, 60),
+      priority: "high",
+      runFn: () =>
+        sendPresetAnnouncement(preset.id, preset.name, payload, auth.username).then((result) => {
+          addLog(
+            "tts",
+            `[PRIORITY] Preset "${preset.name}" played`,
+            auth.username,
+            `target=${payload.targetAddress} codec=${payload.codec}`
+          );
+          return result;
+        }),
+    });
+
+    res.json({ jobId, queued: true });
   });
 
   return httpServer;

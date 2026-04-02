@@ -6,6 +6,7 @@ import type {
   SystemSettings,
   LogEntry,
   LogLevel,
+  GlobalPreset,
 } from "@shared/schema";
 
 const DATA_DIR = path.resolve(process.cwd());
@@ -182,6 +183,58 @@ export function getLogs(limit = 200): LogEntry[] {
 
 export function clearLogs(): void {
   writeLogs([]);
+}
+
+// ─── Global Presets ───────────────────────────────────────────────────────────
+
+const PRESETS_FILE = path.join(DATA_DIR, "presets.json");
+export const PRESETS_AUDIO_DIR = path.join(DATA_DIR, "data", "presets");
+
+function readPresets(): GlobalPreset[] {
+  try {
+    if (!fs.existsSync(PRESETS_FILE)) return [];
+    return JSON.parse(fs.readFileSync(PRESETS_FILE, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function writePresets(presets: GlobalPreset[]): void {
+  fs.writeFileSync(PRESETS_FILE, JSON.stringify(presets, null, 2), "utf-8");
+}
+
+export function getAllPresets(): GlobalPreset[] {
+  return readPresets();
+}
+
+export function getPresetById(id: string): GlobalPreset | undefined {
+  return readPresets().find((p) => p.id === id);
+}
+
+export function createPreset(data: Omit<GlobalPreset, "id">): GlobalPreset {
+  const presets = readPresets();
+  const preset: GlobalPreset = { id: makeId(), ...data };
+  presets.push(preset);
+  writePresets(presets);
+  return preset;
+}
+
+export function updatePreset(id: string, data: Partial<GlobalPreset>): GlobalPreset | null {
+  const presets = readPresets();
+  const idx = presets.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  presets[idx] = { ...presets[idx], ...data };
+  writePresets(presets);
+  return presets[idx];
+}
+
+export function deletePreset(id: string): GlobalPreset | null {
+  const presets = readPresets();
+  const idx = presets.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  const [removed] = presets.splice(idx, 1);
+  writePresets(presets);
+  return removed;
 }
 
 // ─── Seed default admin ───────────────────────────────────────────────────────

@@ -162,6 +162,43 @@ export const systemSettingsSchema = z.object({
 });
 export type SystemSettings = z.infer<typeof systemSettingsSchema>;
 
+// ─── Global Presets ───────────────────────────────────────────────────────────
+export const globalPresetSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  text: z.string().min(1),
+  voiceSpeed: z.number().min(0.5).max(2.0).default(1.0),
+  voicePitch: z.number().min(0.5).max(2.0).default(1.0),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  allowedUserIds: z.array(z.string()).nullable().default(null),
+  audioReady: z.boolean().default(false),
+  audioGeneratedAt: z.string().optional(),
+  audioError: z.string().optional(),
+});
+export type GlobalPreset = z.infer<typeof globalPresetSchema>;
+
+export const createGlobalPresetSchema = z.object({
+  name: z.string().min(1, "Name required"),
+  text: z.string().min(1, "Text required").max(2000),
+  voiceSpeed: z.number().min(0.5).max(2.0).optional(),
+  voicePitch: z.number().min(0.5).max(2.0).optional(),
+  allowedUserIds: z.array(z.string()).nullable().optional(),
+});
+export type CreateGlobalPresetPayload = z.infer<typeof createGlobalPresetSchema>;
+
+export const presetPlaySchema = z.object({
+  contactId: z.string().optional(),
+  mode: z.enum(["direct", "pg"]).optional(),
+  targetAddress: z.string().optional(),
+  pgExtension: z.string().optional(),
+  codec: z.enum(["PCMU", "PCMA", "G722"]),
+  dtmfDelayMs: z.number().int().min(200).max(2000).optional(),
+  chimeEnabled: z.boolean().optional(),
+  chimeDelayMs: z.number().int().min(300).max(10000).optional(),
+});
+export type PresetPlayPayload = z.infer<typeof presetPlaySchema>;
+
 // ─── TTS Send Request ─────────────────────────────────────────────────────────
 export const ttsSendSchema = z.object({
   text: z.string().min(1, "Text is required").max(2000),
