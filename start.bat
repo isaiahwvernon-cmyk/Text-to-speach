@@ -80,7 +80,7 @@ echo Python found: %PYVER%
 if %errorlevel% equ 0 (
     echo [TTS] Kokoro TTS: already installed -- OK
     echo.
-    goto :CHECK_FFMPEG
+    goto :INSTALL_LANG_PKGS
 )
 
 echo [TTS] Installing Kokoro TTS and dependencies...
@@ -92,11 +92,78 @@ if %errorlevel% neq 0 (
     echo [TTS] WARNING: Kokoro install failed. TTS will run in simulation mode.
     echo [TTS] Retry manually: pip install kokoro soundfile
     echo.
+    goto :CHECK_FFMPEG
 ) else (
     echo.
     echo [TTS] Kokoro TTS installed successfully!
     echo.
 )
+
+:: ── Install extra language packages ───────────────────────────────────────────
+:: These enable Japanese, Mandarin, Korean and Hindi voices.
+:: Each is installed individually — a failure on one does not block the others.
+:INSTALL_LANG_PKGS
+echo [TTS] Checking extra language packages...
+echo.
+
+:: Japanese — requires pyopenjtalk (use the prebuilt wheel for Windows)
+%PYTHON_CMD% -c "import pyopenjtalk" >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [TTS] Installing Japanese support (pyopenjtalk-prebuilt)...
+    %PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>nul
+    if %errorlevel% equ 0 (
+        echo [TTS]   Japanese -- OK
+    ) else (
+        echo [TTS]   Japanese -- SKIPPED (install failed, Japanese voice unavailable^)
+    )
+) else (
+    echo [TTS]   Japanese -- already installed
+)
+
+:: Mandarin Chinese — requires jieba
+%PYTHON_CMD% -c "import jieba" >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [TTS] Installing Mandarin support (jieba)...
+    %PYTHON_CMD% -m pip install jieba >nul 2>nul
+    if %errorlevel% equ 0 (
+        echo [TTS]   Mandarin -- OK
+    ) else (
+        echo [TTS]   Mandarin -- SKIPPED (install failed, Mandarin voice unavailable^)
+    )
+) else (
+    echo [TTS]   Mandarin -- already installed
+)
+
+:: Korean — requires misaki[ko]
+%PYTHON_CMD% -c "import misaki" >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [TTS] Installing Korean support (misaki[ko])...
+    %PYTHON_CMD% -m pip install "misaki[ko]" >nul 2>nul
+    if %errorlevel% equ 0 (
+        echo [TTS]   Korean -- OK
+    ) else (
+        echo [TTS]   Korean -- SKIPPED (install failed, Korean voice unavailable^)
+    )
+) else (
+    echo [TTS]   Korean -- already installed
+)
+
+:: Hindi — requires misaki[hi]
+:: (misaki already checked above; just verify the Hindi extras)
+%PYTHON_CMD% -c "from misaki import hi" >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [TTS] Installing Hindi support (misaki[hi])...
+    %PYTHON_CMD% -m pip install "misaki[hi]" >nul 2>nul
+    if %errorlevel% equ 0 (
+        echo [TTS]   Hindi -- OK
+    ) else (
+        echo [TTS]   Hindi -- SKIPPED (install failed, Hindi voice unavailable^)
+    )
+) else (
+    echo [TTS]   Hindi -- already installed
+)
+
+echo.
 
 :: ── Check / install ffmpeg ────────────────────────────────────────────────────
 :CHECK_FFMPEG
