@@ -942,8 +942,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
   // GLOBAL PRESETS (admin + it create/manage; all users can list/play)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // GET /api/presets — list all presets (filtered by access for regular users)
-  app.get("/api/presets", requireAuth, (req, res) => {
+  // GET /api/global-presets — list all global presets (filtered by access for regular users)
+  app.get("/api/global-presets", requireAuth, (req, res) => {
     const auth = (req as any).auth;
     const presets = getAllPresets();
 
@@ -958,8 +958,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json(visible);
   });
 
-  // POST /api/presets — create preset (admin/it), max 10
-  app.post("/api/presets", requireAuth, requireRole("admin", "it"), async (req, res) => {
+  // POST /api/global-presets — create preset (admin/it), max 10
+  app.post("/api/global-presets", requireAuth, requireRole("admin", "it"), async (req, res) => {
     const parsed = createGlobalPresetSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid preset data", details: parsed.error.issues });
@@ -1000,8 +1000,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.status(201).json(preset);
   });
 
-  // PUT /api/presets/:id — update preset text/name/voice (admin/it)
-  app.put("/api/presets/:id", requireAuth, requireRole("admin", "it"), async (req, res) => {
+  // PUT /api/global-presets/:id — update preset text/name/voice (admin/it)
+  app.put("/api/global-presets/:id", requireAuth, requireRole("admin", "it"), async (req, res) => {
     const preset = getPresetById(req.params.id);
     if (!preset) return res.status(404).json({ error: "Preset not found" });
 
@@ -1041,8 +1041,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json(updated);
   });
 
-  // PATCH /api/presets/:id/access — update user access list (admin only)
-  app.patch("/api/presets/:id/access", requireAuth, requireRole("admin"), (req, res) => {
+  // PATCH /api/global-presets/:id/access — update user access list (admin only)
+  app.patch("/api/global-presets/:id/access", requireAuth, requireRole("admin"), (req, res) => {
     const preset = getPresetById(req.params.id);
     if (!preset) return res.status(404).json({ error: "Preset not found" });
 
@@ -1057,8 +1057,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json(updated);
   });
 
-  // POST /api/presets/:id/regenerate — re-generate audio (admin/it)
-  app.post("/api/presets/:id/regenerate", requireAuth, requireRole("admin", "it"), async (req, res) => {
+  // POST /api/global-presets/:id/regenerate — re-generate audio (admin/it)
+  app.post("/api/global-presets/:id/regenerate", requireAuth, requireRole("admin", "it"), async (req, res) => {
     const preset = getPresetById(req.params.id);
     if (!preset) return res.status(404).json({ error: "Preset not found" });
 
@@ -1077,8 +1077,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json({ ok: true, message: "Audio regeneration started" });
   });
 
-  // DELETE /api/presets/:id — delete preset + audio file (admin/it)
-  app.delete("/api/presets/:id", requireAuth, requireRole("admin", "it"), (req, res) => {
+  // DELETE /api/global-presets/:id — delete preset + audio file (admin/it)
+  app.delete("/api/global-presets/:id", requireAuth, requireRole("admin", "it"), (req, res) => {
     const preset = getPresetById(req.params.id);
     if (!preset) return res.status(404).json({ error: "Preset not found" });
 
@@ -1089,8 +1089,8 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json({ ok: true });
   });
 
-  // POST /api/presets/:id/play — play preset with HIGH priority
-  app.post("/api/presets/:id/play", requireAuth, async (req, res) => {
+  // POST /api/global-presets/:id/play — play preset with HIGH priority
+  app.post("/api/global-presets/:id/play", requireAuth, async (req, res) => {
     const auth = (req as any).auth;
     const allPresets = getAllPresets();
     const preset = allPresets.find((p) => p.id === req.params.id);

@@ -91,7 +91,7 @@ export default function ItSettingsPage() {
         apiFetch("/api/settings"),
         apiFetch("/api/logs?limit=100"),
         apiFetch("/api/system/status"),
-        apiFetch("/api/presets"),
+        apiFetch("/api/global-presets"),
       ]);
       if (settingsRes.ok) setSettings(await settingsRes.json());
       if (logsRes.ok) setLogs(await logsRes.json());
@@ -103,7 +103,7 @@ export default function ItSettingsPage() {
 
   async function refreshPresets() {
     try {
-      const res = await apiFetch("/api/presets");
+      const res = await apiFetch("/api/global-presets");
       if (res.ok) setPresets(await res.json());
     } catch {}
   }
@@ -133,7 +133,7 @@ export default function ItSettingsPage() {
     if (!presetName.trim() || !presetText.trim()) return;
     setPresetSaving(true);
     try {
-      const url = editingPreset ? `/api/presets/${editingPreset.id}` : "/api/presets";
+      const url = editingPreset ? `/api/global-presets/${editingPreset.id}` : "/api/global-presets";
       const method = editingPreset ? "PUT" : "POST";
       const res = await apiFetch(url, {
         method,
@@ -157,7 +157,7 @@ export default function ItSettingsPage() {
   async function handleDeletePreset(p: GlobalPreset) {
     if (!confirm(`Delete preset "${p.name}"? The audio file will also be removed.`)) return;
     try {
-      const res = await apiFetch(`/api/presets/${p.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/global-presets/${p.id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         toast({ title: "Error", description: err.error, variant: "destructive" });
@@ -172,7 +172,7 @@ export default function ItSettingsPage() {
 
   async function handleRegeneratePreset(p: GlobalPreset) {
     try {
-      await apiFetch(`/api/presets/${p.id}/regenerate`, { method: "POST" });
+      await apiFetch(`/api/global-presets/${p.id}/regenerate`, { method: "POST" });
       await refreshPresets();
       toast({ title: "Regenerating audio…" });
     } catch (e: any) {

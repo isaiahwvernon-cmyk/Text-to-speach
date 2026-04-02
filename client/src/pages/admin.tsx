@@ -538,7 +538,7 @@ export default function AdminPage() {
       const [usersRes, contactsRes, presetsRes] = await Promise.all([
         apiFetch("/api/users"),
         apiFetch("/api/rooms"),
-        apiFetch("/api/presets"),
+        apiFetch("/api/global-presets"),
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
       if (contactsRes.ok) setContacts(await contactsRes.json());
@@ -549,7 +549,7 @@ export default function AdminPage() {
 
   async function refreshPresets() {
     try {
-      const res = await apiFetch("/api/presets");
+      const res = await apiFetch("/api/global-presets");
       if (res.ok) setPresets(await res.json());
     } catch {}
   }
@@ -573,7 +573,7 @@ export default function AdminPage() {
   async function handleSavePreset(data: any) {
     try {
       const isEdit = !!editingPreset;
-      const url = isEdit ? `/api/presets/${editingPreset!.id}` : "/api/presets";
+      const url = isEdit ? `/api/global-presets/${editingPreset!.id}` : "/api/global-presets";
       const method = isEdit ? "PUT" : "POST";
       const res = await apiFetch(url, { method, body: JSON.stringify(data) });
       if (!res.ok) {
@@ -593,7 +593,7 @@ export default function AdminPage() {
   async function handleDeletePreset(p: GlobalPreset) {
     if (!confirm(`Delete preset "${p.name}"? The audio file will also be removed.`)) return;
     try {
-      const res = await apiFetch(`/api/presets/${p.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/global-presets/${p.id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         toast({ title: "Error", description: err.error, variant: "destructive" });
@@ -608,7 +608,7 @@ export default function AdminPage() {
 
   async function handleRegeneratePreset(p: GlobalPreset) {
     try {
-      await apiFetch(`/api/presets/${p.id}/regenerate`, { method: "POST" });
+      await apiFetch(`/api/global-presets/${p.id}/regenerate`, { method: "POST" });
       await refreshPresets();
       toast({ title: "Regenerating audio…" });
     } catch (e: any) {
@@ -618,7 +618,7 @@ export default function AdminPage() {
 
   async function handlePresetAccess(presetId: string, allowedUserIds: string[] | null) {
     try {
-      await apiFetch(`/api/presets/${presetId}/access`, {
+      await apiFetch(`/api/global-presets/${presetId}/access`, {
         method: "PATCH",
         body: JSON.stringify({ allowedUserIds }),
       });

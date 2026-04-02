@@ -1225,7 +1225,7 @@ function GlobalPresetsPanel({ contacts }: { contacts: Contact[] }) {
 
   async function loadPresets() {
     try {
-      const res = await apiFetch("/api/presets");
+      const res = await apiFetch("/api/global-presets");
       if (res.ok) setPresets(await res.json());
     } catch {}
   }
@@ -1271,7 +1271,7 @@ function GlobalPresetsPanel({ contacts }: { contacts: Contact[] }) {
     if (!playingPreset || !selectedContactId) return;
     setSubmitting(true);
     try {
-      const res = await apiFetch(`/api/presets/${playingPreset.id}/play`, {
+      const res = await apiFetch(`/api/global-presets/${playingPreset.id}/play`, {
         method: "POST",
         body: JSON.stringify({ contactId: selectedContactId, codec: selectedCodec }),
       });

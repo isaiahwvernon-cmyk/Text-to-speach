@@ -7,13 +7,7 @@
     "passwordHash": "$2b$10$a8Ue9sO3mhZ7bDdO6rzrf.SqBMt1VOzle0FpiNcc.3DsRFntzibDy",
     "ttsEnabled": true,
     "assignedRoomIds": [],
-    "presets": [
-      {
-        "id": "mngrmagruaixt",
-        "name": "test",
-        "text": "test"
-      }
-    ]
+    "presets": []
   },
   {
     "id": "mn9aad024c8da2ab",
