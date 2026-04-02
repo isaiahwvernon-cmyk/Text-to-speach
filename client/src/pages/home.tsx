@@ -697,13 +697,14 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  const selectedContact = contacts.find((c) => c.id === selectedContactId);
+  const effectiveContactId = selectedContactId || contacts[0]?.id || "";
+  const selectedContact = contacts.find((c) => c.id === effectiveContactId);
 
   async function handleSend(presetText?: string) {
     const finalText = presetText ?? text;
     if (!finalText.trim()) return;
 
-    if (!selectedContactId) {
+    if (!effectiveContactId) {
       toast({ title: "Select a contact", description: "Choose a contact to page", variant: "destructive" });
       return;
     }
@@ -721,7 +722,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
           language: primaryLang,
           secondText: secondLangEnabled && secondText.trim() ? secondText.trim() : undefined,
           secondLanguage: secondLangEnabled && secondText.trim() ? secondLang : undefined,
-          contactId: selectedContactId,
+          contactId: effectiveContactId,
           codec,
           dtmfDelayMs: selectedContact?.mode === "pg" ? dtmfDelay : undefined,
           chimeEnabled: selectedContact?.mode === "pg" ? chimeEnabled : undefined,
@@ -964,7 +965,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
           ) : (
             <select
               data-testid="select-contact"
-              value={selectedContactId}
+              value={effectiveContactId}
               onChange={(e) => setSelectedContactId(e.target.value)}
               className={SELECT_CLS}
             >
@@ -1149,7 +1150,7 @@ function TtsPanel({ contacts }: { contacts: Contact[] }) {
         <Button
           data-testid="button-send-tts"
           onClick={() => handleSend()}
-          disabled={sending || !text.trim() || !selectedContactId}
+          disabled={sending || !text.trim() || !effectiveContactId}
           className="w-full bg-[#FF8200] hover:bg-[#e07200] text-white rounded-xl py-3.5 text-base font-semibold shadow-md shadow-orange-100 disabled:opacity-60"
         >
           {sending
