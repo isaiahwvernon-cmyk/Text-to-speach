@@ -12,8 +12,8 @@ export const speakerSchema = z.object({
   id: z.string(),
   label: z.string(),
   ipAddress: z.string().min(1),
-  username: z.string().min(1),
-  password: z.string().min(1),
+  username: z.string().default(""),
+  password: z.string().default(""),
 });
 export type Speaker = z.infer<typeof speakerSchema>;
 
@@ -114,7 +114,6 @@ export const SUPPORTED_LANGUAGES = [
   { code: "es",    label: "Spanish",      extraPkg: null },
   { code: "it",    label: "Italian",      extraPkg: null },
   { code: "pt",    label: "Portuguese",   extraPkg: null },
-  { code: "ja",    label: "Japanese",     extraPkg: "pyopenjtalk-prebuilt" },
   { code: "zh",    label: "Mandarin",     extraPkg: "jieba" },
   { code: "ko",    label: "Korean",       extraPkg: "misaki[ko]" },
   { code: "hi",    label: "Hindi",        extraPkg: "misaki[hi]" },

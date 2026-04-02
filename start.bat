@@ -100,29 +100,11 @@ if %errorlevel% neq 0 (
 )
 
 :: ── Install extra language packages ───────────────────────────────────────────
-:: These enable Japanese, Mandarin, Korean and Hindi voices.
+:: These enable Mandarin, Korean and Hindi voices.
 :: Each is installed individually — a failure on one does not block the others.
 :INSTALL_LANG_PKGS
 echo [TTS] Checking extra language packages...
 echo.
-
-:: Japanese -- requires pyopenjtalk (prebuilt wheel for Windows)
-%PYTHON_CMD% -c "import pyopenjtalk" >nul 2>nul
-if %errorlevel% equ 0 goto :JP_ALREADY
-echo [TTS] Installing Japanese support (pyopenjtalk-prebuilt)...
-%PYTHON_CMD% -m pip install pyopenjtalk-prebuilt >nul 2>"%TEMP%\vn_pkg.tmp"
-if %errorlevel% equ 0 goto :JP_OK
-echo [TTS]   Japanese -- SKIPPED. pip error:
-type "%TEMP%\vn_pkg.tmp"
-echo [TTS]   To retry: pip install pyopenjtalk-prebuilt
-echo [TTS]   Note: pyopenjtalk may require Microsoft C++ Build Tools on some systems.
-goto :JP_DONE
-:JP_OK
-echo [TTS]   Japanese -- OK
-goto :JP_DONE
-:JP_ALREADY
-echo [TTS]   Japanese -- already installed
-:JP_DONE
 
 :: Mandarin Chinese -- requires jieba
 %PYTHON_CMD% -c "import jieba" >nul 2>nul
