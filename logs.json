@@ -1,5 +1,26 @@
 [
   {
+    "id": "mngr1r5o3e19c4f7",
+    "timestamp": "2026-04-02T00:41:34.140Z",
+    "level": "info",
+    "message": "User logged in: admin",
+    "user": "admin"
+  },
+  {
+    "id": "mngr016yc2729b46",
+    "timestamp": "2026-04-02T00:40:13.834Z",
+    "level": "info",
+    "message": "User logged in: admin",
+    "user": "admin"
+  },
+  {
+    "id": "mngqz40xf1c8d372",
+    "timestamp": "2026-04-02T00:39:30.850Z",
+    "level": "info",
+    "message": "User logged in: it",
+    "user": "it"
+  },
+  {
     "id": "mng6rm8e18a1bd3d",
     "timestamp": "2026-04-01T15:13:48.878Z",
     "level": "info",
