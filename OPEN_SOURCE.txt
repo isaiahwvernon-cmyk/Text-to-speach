@@ -43,12 +43,14 @@ interface to control audio and make voice announcements without physical access
 to amplifiers or dedicated paging hardware.
 
 Key features:
-  - Role-based user access (User / Admin / IT)
+  - Role-based user access (User / Admin / IT / Recovery)
   - Text-to-Speech announcements via Kokoro TTS (local, offline, free)
   - Direct SIP audio routing to individual speakers
   - Paging Gateway (PG) routing for multicast zone paging
   - Multiple configurable paging gateways
   - Contact-based routing with per-user assignments
+  - Global Priority Presets — pre-generated announcements with priority playback
+  - Bilingual announcements (two languages in one seamless audio clip)
   - Full audit logging of all system activity
   - QR code for instant phone/tablet connection
   - TTS job queue for concurrent users
@@ -76,9 +78,8 @@ The TOA IP-A1 API documentation and technical manuals are available from:
     https://www.toaelectronics.com/
 
 Relevant product series for which this software is designed:
-  - IP-A1S (ceiling speaker, PoE)
+  - IP-A1PC580S (ceiling speaker, PoE)
   - IP-A1F (flush-mount ceiling speaker)
-  - IP-A1T (tile-type ceiling speaker)
   - Other IP-A1 series models with HTTP API v2 support
   - IP-A1PG (Paging Gateway for multicast zone audio)
 
@@ -141,6 +142,17 @@ host machine. All are free and open-source unless otherwise noted.
 
   To install all Python packages at once:
     pip install kokoro soundfile
+
+SUPPORTED TTS LANGUAGES (built-in, no extra packages):
+  - English (US)
+  - English (UK)
+  - French
+  - Spanish
+  - Italian
+  - Portuguese
+
+SUPPORTED TTS LANGUAGES (requires additional package):
+  - Hindi  (pip install "misaki[hi]"  — installed automatically by start.bat)
 
 
 --------------------------------------------------------------------------------
@@ -234,9 +246,8 @@ When contributing:
 Areas where contributions are especially valuable:
   - Support for additional TOA speaker models or firmware versions
   - Accessibility improvements
-  - Additional language translations for the UI
+  - Additional TTS language support
   - Better offline/PWA support (service worker caching)
-  - Support for additional TTS engines or languages
   - Volume scheduling (set volume automatically at certain times)
   - SIP PBX integration for enterprise deployments
 

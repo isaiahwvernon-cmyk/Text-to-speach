@@ -12,6 +12,10 @@ IV VoxNova is a web-based control system that lets you:
 
   - Send voice announcements (Text-to-Speech) to speakers or paging zones
     from any phone, tablet, or computer — just by typing the message
+  - Play bilingual announcements — type text in two languages and they play
+    back-to-back as one seamless announcement
+  - Use Global Priority Presets — pre-recorded announcements that play
+    instantly and interrupt any currently playing audio
   - Control the volume and mute state of TOA IP-A1 ceiling speakers
   - Manage paging zones and contacts across your building or campus
 
@@ -28,7 +32,7 @@ that will run the server. This is a one-time setup done by IT.
   1. NODE.JS 18 OR NEWER
        Download: https://nodejs.org  (click the LTS button, run the installer)
        After installing: restart the PC
-       Verify: open Command Prompt → type:  node --version
+       Verify: open Command Prompt -> type:  node --version
                You should see something like v20.0.0
 
   2. PYTHON 3.12
@@ -36,23 +40,24 @@ that will run the server. This is a one-time setup done by IT.
        CRITICAL: During installation, CHECK the box that says
                  "Add Python 3.12 to PATH" before clicking Install
        After installing: restart the PC
-       Verify: open Command Prompt → type:  python --version
+       Verify: open Command Prompt -> type:  python --version
                You should see:  Python 3.12.x
 
   3. PYTHON PACKAGES (for TTS voice announcements)
-       After installing Python 3.12, open Command Prompt and type:
+       start.bat installs these automatically on first run.
+       To install manually, open Command Prompt and type:
          pip install kokoro soundfile
        This installs the Kokoro text-to-speech engine.
        Wait for it to finish — it may take a few minutes on first install.
 
   4. FFMPEG (for audio delivery to speakers)
        Download: https://ffmpeg.org/download.html
-         → Click "Windows builds" → download a release build
-         → Extract the zip, copy the folder somewhere (e.g. C:\ffmpeg)
-         → Add C:\ffmpeg\bin to your Windows System PATH:
-             Start → search "Environment Variables" → Edit system variables
-             → select "Path" → Edit → New → type  C:\ffmpeg\bin  → OK
-       Verify: open a NEW Command Prompt → type:  ffmpeg -version
+         -> Click "Windows builds" -> download a release build
+         -> Extract the zip, copy the folder somewhere (e.g. C:\ffmpeg)
+         -> Add C:\ffmpeg\bin to your Windows System PATH:
+             Start -> search "Environment Variables" -> Edit system variables
+             -> select "Path" -> Edit -> New -> type  C:\ffmpeg\bin  -> OK
+       Verify: open a NEW Command Prompt -> type:  ffmpeg -version
 
   5. IV VoxNova APPLICATION FOLDER
        The folder containing start.bat and the rest of the program files
@@ -67,8 +72,10 @@ STARTING THE APP (WINDOWS)
 1. Open the IV VoxNova folder on the PC
 2. Double-click  start.bat
 3. A black Command Prompt window appears — this is normal, leave it open
-4. The first time you run it, it may take about 1–2 minutes to build
-   (you will see text scrolling in the black window — this is normal)
+4. The first time you run it, start.bat will:
+     - Install any missing Python packages automatically
+     - Build the app (takes about 1-2 minutes)
+     You will see text scrolling in the black window — this is normal
 5. After building, your web browser opens automatically to a QR code page
 
 IMPORTANT: Keep the black Command Prompt window open. If you close it,
@@ -85,10 +92,12 @@ When you open IV VoxNova in a browser, you will see a login screen.
 Enter your username and password. Your IT team or admin will give you
 your login credentials.
 
-There are three types of accounts:
-  USER     — Can send TTS announcements and control speakers in assigned zones
+There are four types of accounts:
+  USER     — Can send TTS announcements to assigned contacts
   ADMIN    — Can manage users and contacts (zones/rooms)
   IT       — Full system access including TTS engine settings and logs
+  RECOVERY — Emergency account for resetting the system if all others
+             are locked out
 
 
 --------------------------------------------------------------------------------
@@ -123,12 +132,12 @@ SAVING TO YOUR PHONE HOME SCREEN (APP-LIKE EXPERIENCE)
 ON iPHONE / iPAD (Safari):
   1. Open the app in Safari
   2. Tap the Share button (box with arrow pointing up)
-  3. Scroll down → tap "Add to Home Screen"
-  4. Give it a name (e.g. "IV VoxNova") → tap "Add"
+  3. Scroll down -> tap "Add to Home Screen"
+  4. Give it a name (e.g. "IV VoxNova") -> tap "Add"
 
 ON ANDROID (Chrome):
   1. Open the app in Chrome
-  2. Tap the three-dot menu (⋮) → "Add to Home screen" → "Add"
+  2. Tap the three-dot menu -> "Add to Home screen" -> "Add"
 
 Once added, the app opens full-screen without a browser address bar.
 
@@ -144,35 +153,77 @@ STEP BY STEP:
   2. On the main screen, you will see the TTS panel
   3. Select a Contact (zone/speaker group) from the dropdown
      — Contacts are set up by your admin and assigned to your account
-  4. Type your announcement text in the text box
+  4. Select a Language for the announcement
+  5. Type your announcement text in the text box
      — e.g. "Attention please, all staff report to the main office."
-  5. Tap "Send Announcement"
-  6. A progress bar appears showing the announcement being processed
+  6. Tap "Send Announcement"
+  7. A progress bar appears showing the announcement being processed
      — If another announcement is being sent, yours will queue automatically
      — You will see your position: "You are #2 in line"
-  7. When it completes, a success message appears
+  8. When it completes, a success message appears
 
 TIPS:
   - Keep announcements clear and concise
-  - Presets (saved messages) appear below the text box — tap one to use it
-  - Your admin can add presets to your account for frequently used messages
+  - Personal presets (saved messages) appear below the text box —
+    tap one to instantly fill the text and send
+  - Global Priority Presets appear at the top — these play immediately
+    with higher priority and interrupt any current announcement
   - The TTS engine runs locally — no internet is needed for announcements
+
+
+--------------------------------------------------------------------------------
+BILINGUAL ANNOUNCEMENTS
+--------------------------------------------------------------------------------
+You can send an announcement in two languages. The second language plays
+immediately after the first as one continuous, seamless audio clip.
+
+HOW TO USE:
+  1. Type your text in the main text box and select the primary language
+  2. Click "Add second language" (the globe icon or language button)
+  3. Type the same message (or a different message) in the second text box
+  4. Select the second language from the dropdown
+  5. Tap "Send Announcement" — both languages play one after the other
+
+EXAMPLE:
+  Primary:  "Attention please, all students return to class."  (English)
+  Second:   "Attention s'il vous plait, tous les eleves retournez en classe."  (French)
+
+The two parts are joined with a short pause and delivered as a single
+announcement with no gap.
+
+
+--------------------------------------------------------------------------------
+GLOBAL PRIORITY PRESETS
+--------------------------------------------------------------------------------
+Global Priority Presets are pre-generated announcements set up by your Admin.
+They play IMMEDIATELY with higher priority than regular TTS, and will interrupt
+any announcement currently playing.
+
+HOW TO USE:
+  - On the main screen, Global Presets appear as large buttons (typically
+    labeled with their purpose, e.g. "Fire Evacuation", "Lockdown", etc.)
+  - Tap the preset button to play it instantly to all assigned contacts
+  - No text entry required — the audio was pre-generated by your Admin
+  - If you do not see any preset buttons, none have been assigned to you
+
+WHEN TO USE:
+  Use Global Presets for urgent, time-sensitive announcements that must be
+  heard immediately and cannot wait for a TTS generation queue.
 
 
 --------------------------------------------------------------------------------
 VOLUME CONTROL
 --------------------------------------------------------------------------------
-To control the volume of a room's speakers:
+Volume control is available for Direct SIP contacts (speaker IP addresses).
+PG Gateway contacts do not support volume control.
 
-  1. Log in and look for the volume control panel on your screen
-  2. Select the contact/room you want to control
-  3. Use the volume slider or +/- buttons to adjust volume
-  4. Tap "Mute" to silence the speaker (Mute does not change the volume level;
-     it just silences it until you tap "Unmute")
+TO CONTROL VOLUME:
+  1. Select a Direct SIP contact from the dropdown
+  2. The volume panel appears below the TTS panel
+  3. Use the slider or the +/- buttons to adjust volume
+  4. Tap "Mute" to silence the speaker (tap "Unmute" to restore)
 
-Volume is shown as a percentage (0% to 100%).
-
-PRESETS:
+Volume presets:
   LOW     — quiet background audio
   NORMAL  — comfortable speech level
   LOUD    — louder, for noisy environments or presentations
@@ -181,13 +232,14 @@ PRESETS:
 --------------------------------------------------------------------------------
 CONTACTS (ZONES / ROOMS)
 --------------------------------------------------------------------------------
-Contacts are paging zones or speaker groups that you can send announcements to.
+Contacts are paging zones or speaker groups that you send announcements to.
 They are set up by your Admin or IT team.
 
 There are two types of contact:
 
   DIRECT SIP — Sends audio directly to one or more speaker IP addresses.
     Use this when you want to page specific speakers by their network address.
+    Also supports volume and mute control.
 
   PG GATEWAY — Sends audio through a Paging Gateway device to a multicast zone.
     Use this for building-wide or area-wide paging systems.
@@ -206,30 +258,42 @@ Admins can:
   - Create, edit, and delete user accounts
   - Create, edit, and delete contacts (paging zones/rooms)
   - Assign contacts to user accounts
-  - Set TTS presets for each user
+  - Manage personal TTS presets for each user
+  - Manage Global Priority Presets and control which users can use each one
 
 ACCESS ADMIN PANEL:
-  - Tap your name or the Admin menu in the top-right corner of the main screen
-  - The Admin panel has two tabs: USERS and CONTACTS
+  - Tap the Admin button (shield icon) in the top navigation bar
+  - The Admin panel has three tabs: USERS, CONTACTS, and GLOBAL PRESETS
 
 ADDING A USER:
-  1. Go to Admin → Users tab → click "Add User"
+  1. Go to Admin -> Users tab -> click "Add User"
   2. Enter: Username, Display Name, Password, Role
   3. Toggle "TTS Enabled" if this user should be able to send announcements
   4. Assign contacts (zones) that this user can page
   5. Click "Create User"
 
 ADDING A CONTACT:
-  1. Go to Admin → Contacts tab → click "Add Contact"
+  1. Go to Admin -> Contacts tab -> click "Add Contact"
   2. Enter a Name (e.g. "Main Office", "Zone A", "Gym")
   3. Choose the Mode:
-       Direct SIP — enter the speaker IP address, username, and password
+       Direct SIP — enter the speaker IP address, label, and optionally
+                    the username and password for volume control
        PG Gateway — select the gateway and enter the DTMF zone extension
   4. Click Save
 
 ASSIGNING CONTACTS TO USERS:
   When editing a user, the "Assigned Contacts" section lets you check/uncheck
   which zones that user can page. Users only see their assigned contacts.
+
+ADDING A GLOBAL PRIORITY PRESET:
+  1. Go to Admin -> Global Presets tab -> click "New Preset"
+  2. Enter a name, the announcement text, select language and voice settings
+  3. Optionally add a second language for a bilingual preset
+  4. Click Save — the audio generates automatically in the background
+  5. Once the status shows "Ready", the preset can be used
+  6. Use the Access Control section to choose which users can see this preset:
+     - All Users: every user with TTS access can use it
+     - Selected Users: only the users you tick can use it
 
 
 --------------------------------------------------------------------------------
@@ -257,17 +321,28 @@ PAGING GATEWAYS:
   Contacts are then assigned to a specific gateway.
 
 TTS ENGINE SETTINGS:
-  - Default Codec: audio format (G.711u recommended for most systems)
-  - Default Mode: Direct SIP or PG Gateway
+  - Default Codec: audio format (G.711u / PCMU recommended for most systems)
+  - Default Language: language used when no language is specified
   - DTMF Delay: time between dialling and speaking (adjust if zones cut off)
+  - Post-Announcement Delay: silence after speaking before the call ends
   - Chime: play a chime tone before announcements
   - Post-Chime Delay: pause after chime before speaking
-  - Voice Speed / Pitch: adjust the TTS voice characteristics
+  - Voice Speed: adjust the TTS voice speed (0.5x to 2.0x)
+
+CONTACTS BACKUP / RESTORE:
+  - Export Contacts: downloads all contacts as a JSON file
+  - Import Contacts: replaces all contacts from a previously exported file
+    WARNING: Importing replaces ALL current contacts. Export first to back up.
+
+CONFIGURATION BACKUP / RESTORE:
+  - Export Config: downloads all system settings as a JSON file
+  - Import Config: restores settings from a previously exported file
 
 LOGGING:
   - Enable/disable system logging
   - Set log retention period (days)
   - View all system activity: TTS sends, logins, configuration changes
+  - Export logs as a text file
   - Clear logs when needed
 
 IF TTS IS NOT WORKING:
@@ -276,7 +351,7 @@ IF TTS IS NOT WORKING:
     - Python 3.12 is not installed, or not in PATH
       Fix: Re-install Python 3.12, check "Add to PATH", restart the PC
     - kokoro package is not installed
-      Fix: Open Command Prompt → type:  pip install kokoro soundfile
+      Fix: Open Command Prompt -> type:  pip install kokoro soundfile
     - ffmpeg is not in PATH
       Fix: Download ffmpeg, add its bin folder to the Windows PATH
 
@@ -315,17 +390,25 @@ PROBLEM: The app opens to a blank page or shows an error
     - Delete the "dist" folder inside the IV VoxNova folder
     - Double-click start.bat again to rebuild
 
-PROBLEM: Volume change doesn't respond
+PROBLEM: Global Preset button shows "Generating..." for a long time
   SOLUTION:
-    - Check the speaker connection status (green/red dot in the contact panel)
-    - Verify the speaker IP address and credentials in the Contact settings
-    - Ensure the PC and speaker are on the same network subnet
+    - This is normal on first creation — the audio is being generated
+    - If it stays on "Error", click the regenerate button (refresh icon)
+    - Check IT Settings -> Logs for TTS error details
+    - Ensure the TTS engine is available (Python + kokoro installed)
 
-PROBLEM: TTS queue is stuck
+PROBLEM: Announcement is in the queue but not playing
   SOLUTION:
     - Wait a moment — large queues process automatically one at a time
     - If stuck for more than 2 minutes, restart the app
-    - Check IT Settings → System Logs for error details
+    - Check IT Settings -> System Logs for error details
+
+PROBLEM: Volume control shows red dot / not connecting
+  SOLUTION:
+    - Verify the speaker IP address in the Contact settings
+    - Ping the speaker IP from the server PC
+    - Ensure username and password are correct (default is admin/admin)
+    - Volume control requires the speaker to be a Direct SIP contact
 
 
 --------------------------------------------------------------------------------
@@ -333,13 +416,14 @@ QUICK REFERENCE CARD
 --------------------------------------------------------------------------------
 START THE APP:          Double-click start.bat on the PC
 CONNECT PHONE:          Scan QR code or type http://[PC's IP]:5000
-SAVE TO HOME SCREEN:    Share → "Add to Home Screen" (iPhone/iPad)
-                        Menu (⋮) → "Add to Home screen" (Android)
-SEND ANNOUNCEMENT:      Select contact → type text → Send Announcement
-VOLUME CONTROL:         Select contact → use slider or +/− buttons
+SAVE TO HOME SCREEN:    Share -> "Add to Home Screen" (iPhone/iPad)
+                        Menu (three dots) -> "Add to Home screen" (Android)
+SEND ANNOUNCEMENT:      Select contact -> select language -> type text -> Send
+BILINGUAL:              Add second language -> type second text -> Send
+GLOBAL PRESETS:         Tap a preset button to play it immediately
+VOLUME CONTROL:         Select Direct SIP contact -> use slider or +/- buttons
 MUTE:                   Tap Mute to silence (volume is remembered on unmute)
-TTS PRESETS:            Saved announcement texts — tap to fill the text box
-ADMIN PANEL:            Manage users and contacts (Admin role only)
+ADMIN PANEL:            Manage users, contacts, and presets (Admin role only)
 IT SETTINGS:            Configure gateways, TTS engine, logging (IT role only)
 DEFAULT ADMIN:          admin / admin
 DEFAULT IT:             it / it1234

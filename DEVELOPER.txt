@@ -1,8 +1,9 @@
 ================================================================================
-  IP-A1 VOLUME CONTROLLER — DEVELOPER DOCUMENTATION
+  IV VoxNova — IP-A1 CONTROL + TTS PAGING SYSTEM
+  DEVELOPER DOCUMENTATION
 ================================================================================
-Version: 1.0
-Language: TypeScript (full-stack)
+Version: 2.0
+Language: TypeScript (full-stack) + Python (TTS)
 License: See OPEN_SOURCE.txt
 
 
@@ -14,53 +15,64 @@ TABLE OF CONTENTS
 3.  Project Structure
 4.  Technology Stack
 5.  How the App Works — End to End
-6.  Speaker API (TOA IP-A1 HTTP Interface)
+6.  Authentication & Authorization
 7.  Data Model
-8.  Backend (Express Server)
-9.  Frontend (React)
-10. Configuration & Room Storage
-11. Authentication Flow (HTTP Digest)
-12. Multi-Speaker Grouping
-13. Network Discovery & QR Code
-14. Production Build & start.bat
-15. Development Mode
-16. Environment Variables
-17. Common Issues & Debugging
-18. Extending the App
+8.  JSON File Storage
+9.  Backend API Reference
+10. TTS Engine (Kokoro + Python)
+11. TTS Queue
+12. SIP/RTP Audio Delivery (ffmpeg)
+13. Global Priority Presets
+14. Bilingual Announcements
+15. Speaker API (TOA IP-A1 HTTP Interface)
+16. Frontend (React)
+17. Configuration & Storage Files
+18. Production Build & start.bat
+19. Development Mode
+20. Environment Variables
+21. Common Issues & Debugging
+22. Extending the App
 
 
 --------------------------------------------------------------------------------
 1. OVERVIEW
 --------------------------------------------------------------------------------
-IP-A1 Volume Controller is a self-hosted web application that runs on a Windows
-PC (or any Node.js host) on a local area network (LAN). It provides a
-mobile-friendly web UI for teachers and staff to control the volume of TOA IP-A1
-series network ceiling speakers without needing to use a dedicated app or touch
-a physical amplifier.
+IV VoxNova is a self-hosted web application that runs on a Windows PC (or any
+Node.js host) on a local area network (LAN). It provides:
 
-The server runs on port 5000. Any phone, tablet, or browser on the same Wi-Fi
-or Ethernet network can access the interface by typing the server's LAN IP into
-their browser, or by scanning the QR code displayed at startup.
+  - A mobile-friendly web UI for sending Text-to-Speech announcements to
+    TOA IP-A1 speakers via Direct SIP or through Paging Gateways (PG)
+  - Role-based access control (User / Admin / IT / Recovery) using JWT
+  - Speaker volume and mute control
+  - Global Priority Presets: pre-generated audio that plays with priority
+  - Bilingual announcements: two languages joined into one seamless WAV
+  - A TTS queue so multiple users can send concurrently without collisions
+  - Full audit logging of all system activity
+
+The server runs on port 5000. Any phone, tablet, or browser on the same network
+can access the interface by typing the server's LAN IP, or scanning the QR code
+displayed at startup.
 
 
 --------------------------------------------------------------------------------
 2. SYSTEM REQUIREMENTS
 --------------------------------------------------------------------------------
-  Runtime (to run the app):
-    - Node.js 18 or newer  (https://nodejs.org)
-    - Windows 10/11 (start.bat), macOS, or Linux
-    - LAN network shared with the IP-A1 speakers
+Runtime (to run the app):
+  - Node.js 18 or newer
+  - Python 3.12 (must be in PATH)
+  - Python packages: kokoro, soundfile  (and misaki[hi] for Hindi)
+  - ffmpeg in system PATH
+  - Windows 10/11 (start.bat) or any OS with Node.js + Python 3.12
 
-  Development (to modify the code):
-    - All of the above, plus:
-    - npm (comes with Node.js)
-    - A code editor (VS Code recommended)
+Development (to modify the code):
+  - All of the above, plus:
+  - npm (comes with Node.js)
+  - A code editor (VS Code recommended)
 
-  Speaker hardware:
-    - TOA IP-A1 series network speakers (any model with HTTP API v2 support)
-    - Speakers must have a static/reserved IP address
-    - Speakers must be on the same subnet as the host PC
-    - Default speaker credentials: usually admin / admin (check your unit)
+Speaker hardware:
+  - TOA IP-A1 series network speakers (any model with HTTP API v2)
+  - Speakers must have a static/reserved IP address on the same subnet
+  - Optional: TOA IP-A1PG Paging Gateway for multicast zone audio
 
 
 --------------------------------------------------------------------------------
@@ -68,63 +80,74 @@ their browser, or by scanning the QR code displayed at startup.
 --------------------------------------------------------------------------------
   /
   ├── client/                     React frontend (Vite)
-  │   ├── index.html              HTML shell + favicon/PWA meta tags
+  │   ├── index.html              HTML shell + favicon/PWA meta
   │   ├── public/
   │   │   └── favicon.png         App icon (also used as Apple touch icon)
   │   └── src/
   │       ├── main.tsx            React entry point
-  │       ├── App.tsx             Router (wouter) — / and /connect routes
+  │       ├── App.tsx             Router (wouter)
+  │       ├── context/
+  │       │   └── AuthContext.tsx JWT auth context + provider
   │       ├── pages/
-  │       │   ├── home.tsx        Main UI (room list + control panel)
-  │       │   └── connect.tsx     QR code connection page
+  │       │   ├── home.tsx        Main TTS + volume control UI
+  │       │   ├── admin.tsx       Admin panel (users, contacts, presets)
+  │       │   ├── it-settings.tsx IT settings (gateways, TTS, logging)
+  │       │   └── login.tsx       Login page
   │       ├── components/ui/      shadcn/ui component library
   │       ├── hooks/              use-toast, etc.
   │       └── lib/
-  │           └── queryClient.ts  TanStack Query + apiRequest helper
+  │           ├── queryClient.ts  TanStack Query setup + apiRequest helper
+  │           └── auth.ts         apiFetch helper (adds JWT header)
   │
   ├── server/
-  │   ├── index.ts                Express entry point; detects LAN IP; starts server
-  │   ├── routes.ts               All API endpoints + Digest Auth proxy
-  │   └── static.ts               Serves dist/public in production
+  │   ├── index.ts                Express entry point; detects LAN IP
+  │   ├── routes.ts               All API endpoints
+  │   ├── auth.ts                 JWT sign/verify + requireAuth middleware
+  │   ├── tts-engine.ts           Kokoro TTS subprocess wrapper
+  │   ├── tts-queue.ts            TTS job queue (FIFO, single worker)
+  │   ├── sip-sender.ts           SIP/RTP audio delivery via ffmpeg
+  │   └── kokoro_tts.py           Python TTS script (called as subprocess)
   │
   ├── shared/
   │   └── schema.ts               Shared Zod schemas + TypeScript types
   │
-  ├── script/
-  │   └── build.ts                Production build script (Vite + esbuild)
+  ├── data/                       Runtime data (auto-created)
+  │   ├── users.json              User accounts + hashed passwords
+  │   ├── settings.json           System settings
+  │   ├── logs.json               Audit log entries
+  │   └── presets/                Pre-generated WAV files for Global Presets
+  │       └── <preset-id>.wav
   │
-  ├── dist/                       Built output (git-ignored; created by build)
-  │   ├── index.cjs               Bundled Express server
-  │   └── public/                 Bundled React app (HTML + CSS + JS)
-  │
-  ├── rooms.json                  Room/speaker configuration (auto-created)
+  ├── rooms.json                  Contact/speaker configuration
+  ├── presets.json                Global Priority Presets metadata
   ├── start.bat                   Windows launcher script
-  ├── drizzle.config.ts           Drizzle ORM config (not used — no DB)
   └── package.json                NPM scripts and dependencies
 
 
 --------------------------------------------------------------------------------
 4. TECHNOLOGY STACK
 --------------------------------------------------------------------------------
-  Frontend
-    - React 18 + TypeScript
-    - Vite (bundler / dev server)
-    - Tailwind CSS (utility-first styling)
-    - shadcn/ui (accessible component library built on Radix UI)
-    - TanStack Query v5 (data fetching/caching)
-    - wouter (lightweight router)
-    - lucide-react (icons)
-    - qrcode.react (QR code generation on /connect page)
+Frontend
+  - React 18 + TypeScript
+  - Vite (bundler / dev server)
+  - Tailwind CSS (utility-first styling)
+  - shadcn/ui (accessible component library built on Radix UI)
+  - TanStack Query v5 (data fetching/caching)
+  - wouter (lightweight router)
+  - lucide-react (icons)
 
-  Backend
-    - Node.js + Express
-    - esbuild (server bundler for production via tsx)
-    - zod (request validation)
-    - Built-in Node.js `http` + `crypto` modules (for Digest Auth)
-    - Built-in `fs` module (for rooms.json read/write)
+Backend
+  - Node.js + Express
+  - tsx / esbuild (TypeScript execution + bundling)
+  - zod (request/schema validation)
+  - jsonwebtoken (JWT auth)
+  - bcryptjs (password hashing)
+  - QRCode (QR code generation for /connect page)
+  - Python 3.12 subprocess for TTS (kokoro)
+  - ffmpeg subprocess for SIP/RTP audio
 
-  Shared
-    - zod schemas in shared/schema.ts (used by both client and server)
+Shared
+  - Zod schemas in shared/schema.ts (used by both client and server)
 
 
 --------------------------------------------------------------------------------
@@ -132,58 +155,408 @@ their browser, or by scanning the QR code displayed at startup.
 --------------------------------------------------------------------------------
 STARTUP SEQUENCE
   1. User runs start.bat (Windows)
-  2. start.bat checks if dist/public/index.html exists
-     - If not → runs: npx tsx script/build.ts  (builds frontend + server)
-  3. start.bat runs: node dist\index.cjs
+  2. start.bat checks/installs Python packages and builds the app if needed
+  3. Runs: node dist\index.cjs
   4. server/index.ts starts:
      a. Creates Express app + HTTP server
-     b. Detects the LAN IP address (skips virtual adapters like WSL, Docker, VPN)
-     c. Calls registerRoutes(server, app, lanIP, port)  → registers all API endpoints
+     b. Detects the LAN IP (skips virtual adapters: WSL, Docker, VPN)
+     c. Calls registerRoutes(server, app, lanIP, port)
      d. In production: serves dist/public as static files
      e. Starts listening on 0.0.0.0:5000
-     f. Prints the LAN URL to the console
-  5. 4 seconds after startup, the default browser opens to http://localhost:5000/connect
-     (the QR code page showing network connection info)
+     f. Prints the LAN URL + opens browser to /connect (QR code page)
 
-REQUEST FLOW (VOLUME CHANGE EXAMPLE)
-  Browser                   Express (dist/index.cjs)         IP-A1 Speaker
-    │                              │                               │
-    │── POST /api/speaker/         │                               │
-    │   volume/set {ip, user,      │                               │
-    │   pass, volume: 31}  ───────►│                               │
-    │                              │── GET /api/v2/volume/         │
-    │                              │   set_master?volume=31        │
-    │                              │   (no auth header yet) ──────►│
-    │                              │                               │
-    │                              │◄── 401 + WWW-Authenticate ────│
-    │                              │    (Digest challenge)         │
-    │                              │                               │
-    │                              │ computes Digest response      │
-    │                              │── GET /api/v2/volume/         │
-    │                              │   set_master?volume=31        │
-    │                              │   Authorization: Digest... ──►│
-    │                              │                               │
-    │                              │◄── 200 {volume: 31} ──────────│
-    │◄── 200 {volume: 31} ─────────│                               │
+TTS ANNOUNCEMENT FLOW
+  1. User types text, selects contact + language, clicks Send
+  2. POST /api/tts/send is called with { text, language, contactId, ... }
+  3. Server validates JWT, checks user role and assigned contacts
+  4. Job is added to the TTS queue (FIFO)
+  5. Queue worker picks up the job:
+     a. Calls Kokoro TTS (Python subprocess) to generate a WAV file
+     b. If bilingual: generates second WAV, concatenates with 700ms silence
+     c. Calls SIP sender to deliver audio via SIP/RTP (ffmpeg)
+  6. Job status is polled by the frontend (GET /api/tts/status/:jobId)
+  7. On completion, the temporary WAV file is deleted
 
-The browser NEVER talks directly to the speaker. The Express server acts as a
-proxy and handles all Digest Authentication internally. This is necessary because
-browsers cannot perform HTTP Digest Auth without browser UI (a login popup),
-which is unusable on mobile.
+GLOBAL PRESET FLOW
+  1. Admin creates a preset via POST /api/global-presets
+  2. Server immediately enqueues TTS generation in the background
+  3. Pre-generated WAV stored at: data/presets/<preset-id>.wav
+  4. On playback: POST /api/global-presets/:id/play
+     - Job bypasses the regular queue (preempts current playback if needed)
+     - SIP sender is called directly with the pre-generated WAV
 
 
 --------------------------------------------------------------------------------
-6. SPEAKER API (TOA IP-A1 HTTP INTERFACE)
+6. AUTHENTICATION & AUTHORIZATION
 --------------------------------------------------------------------------------
-All speaker endpoints use HTTP Digest Authentication (RFC 2617 / RFC 7616).
+AUTH MECHANISM: JWT (JSON Web Tokens)
+  Token storage: browser localStorage  (key: "voxnova_token")
+  User data storage: browser localStorage  (key: "voxnova_user")
+  Token signing: jsonwebtoken (server/auth.ts)
+  Password hashing: bcryptjs
+
+LOGIN FLOW
+  POST /api/auth/login  { username, password }
+  -> Server verifies password hash with bcryptjs
+  -> Signs JWT with { userId, username, role } payload
+  -> Returns { token, user }
+  -> Client stores token in localStorage; all subsequent requests include:
+       Authorization: Bearer <token>
+
+MIDDLEWARE: requireAuth (server/auth.ts)
+  Reads the Authorization header, verifies the JWT, attaches decoded
+  payload to req.auth. Returns 401 if missing or invalid.
+
+MIDDLEWARE: requireRole(...roles) (server/auth.ts)
+  Checks req.auth.role against the allowed roles. Returns 403 if denied.
+
+ROLES
+  user      Standard user: can send TTS to assigned contacts only
+  admin     Can manage users, contacts, and global presets
+  it        Full system access (settings, logging, backup/restore)
+  recovery  Emergency access only — intended for system recovery
+
+USERS.JSON FORMAT
+  [
+    {
+      "id": "abc123",
+      "username": "jsmith",
+      "displayName": "Jane Smith",
+      "passwordHash": "$2b$10$...",
+      "role": "user",
+      "ttsEnabled": true,
+      "assignedRoomIds": ["room1", "room2"],
+      "presets": [
+        { "id": "p1", "label": "Morning Bell", "text": "Good morning..." }
+      ]
+    }
+  ]
+
+
+--------------------------------------------------------------------------------
+7. DATA MODEL
+--------------------------------------------------------------------------------
+Defined in shared/schema.ts (Zod schemas + TypeScript types).
+
+SPEAKER
+  id:         string    — Generated ID
+  label:      string    — Human-readable name (e.g. "Front Speaker")
+  ipAddress:  string    — Speaker's LAN IP (required)
+  username:   string    — HTTP Digest username (optional, for volume control)
+  password:   string    — HTTP Digest password (optional, for volume control)
+
+CONTACT (rooms.json)
+  id:         string    — Generated ID
+  name:       string    — Contact name (e.g. "Gym", "Zone A")
+  mode:       "direct" | "pg"
+  speakers:   Speaker[] — For direct mode; one or more speaker targets
+  pgExtension: string   — For PG mode; DTMF zone extension
+  pgId:       string?   — ID of the PG gateway to use (optional)
+  codec:      "PCMU" | "PCMA" | "G722" | undefined  — override per-contact
+  syncMode:   boolean   — true = sync all speakers (volume control)
+
+SYSTEM SETTINGS (settings.json)
+  sip:        object    — SIP/RTP delivery settings
+    codec:    string    — Default codec (PCMU/PCMA/G722)
+    dtmfDelay, postDelay, chime, chimeDelay, voiceSpeed: number/boolean
+    language: string    — Default TTS language code
+  pgs:        PgGateway[]  — Configured Paging Gateways
+  logging:    object    — Log retention settings
+
+GLOBAL PRESET (presets.json)
+  id:         string    — Generated ID
+  name:       string    — Display name
+  text:       string    — TTS announcement text (primary language)
+  language:   string    — Primary language code
+  secondText: string?   — Second language text (bilingual)
+  secondLanguage: string? — Second language code
+  voiceSpeed: number    — TTS speed multiplier
+  allowedUserIds: string[] | null  — null = all users; [] = none
+  audioReady: boolean   — Whether the WAV has been generated
+  audioError: string?   — Error message if generation failed
+  audioGeneratedAt: string? — ISO timestamp of last generation
+  createdBy:  string    — Username of creator
+
+LOG ENTRY (logs.json array)
+  id:         string
+  level:      "info" | "warn" | "error"
+  message:    string
+  user:       string?
+  timestamp:  string    — ISO 8601
+
+
+--------------------------------------------------------------------------------
+8. JSON FILE STORAGE
+--------------------------------------------------------------------------------
+There is NO database. All persistent data is stored in JSON files.
+
+  rooms.json       Contacts (read/written by server/routes.ts)
+  presets.json     Global Presets metadata
+  data/users.json  User accounts
+  data/settings.json System settings
+  data/logs.json   Audit log entries
+
+Files are auto-created with defaults if they do not exist.
+All files are read on every relevant API call and written on every mutation.
+
+MIGRATION: If rooms.json was created by an older version (flat
+ipAddress/username/password at room level, no speakers array), readRoomsConfig()
+in routes.ts automatically migrates to the current format on first read.
+
+ROOMS.JSON EXAMPLE
+  [
+    {
+      "id": "abc123",
+      "name": "Gymnasium",
+      "mode": "direct",
+      "syncMode": true,
+      "pgExtension": "",
+      "speakers": [
+        {
+          "id": "s1",
+          "label": "East Speaker",
+          "ipAddress": "192.168.1.101",
+          "username": "admin",
+          "password": "admin"
+        }
+      ]
+    },
+    {
+      "id": "def456",
+      "name": "Zone A - All Classrooms",
+      "mode": "pg",
+      "pgExtension": "100",
+      "pgId": "pg1",
+      "syncMode": false,
+      "speakers": []
+    }
+  ]
+
+
+--------------------------------------------------------------------------------
+9. BACKEND API REFERENCE
+--------------------------------------------------------------------------------
+All routes requiring auth expect: Authorization: Bearer <jwt>
+
+AUTH
+  POST /api/auth/login         { username, password } -> { token, user }
+  POST /api/auth/change-password  { currentPassword, newPassword }
+
+USERS (admin/it only for writes)
+  GET  /api/users              -> User[]  (all users)
+  POST /api/users              { username, displayName, password, role, ... }
+  PUT  /api/users/:id          Update user fields
+  DELETE /api/users/:id        Delete user
+
+CONTACTS / ROOMS
+  GET  /api/rooms              -> Contact[]  (filtered by assignedRoomIds for users)
+  GET  /api/contacts           Same as /api/rooms (alias)
+  POST /api/contacts           Create contact (admin/it)
+  PUT  /api/contacts/:id       Update contact (admin/it)
+  DELETE /api/contacts/:id     Delete contact (admin/it)
+  PUT  /api/rooms              Replace all contacts (admin/it)
+
+  GET  /api/contacts/export    Download contacts as JSON (it)
+  POST /api/contacts/import    Replace contacts from JSON body (it)
+  GET  /api/settings/export    Download full config as JSON (it)
+  POST /api/settings/import    Restore config from JSON body (it)
+
+GATEWAYS
+  GET  /api/gateways           -> PgGateway[]
+
+TTS
+  POST /api/tts/send           { text, language, contactId, secondText?,
+                                 secondLanguage?, voiceSpeed? }
+                               -> { jobId }
+  GET  /api/tts/status/:jobId  -> { status, progress?, error? }
+  GET  /api/tts/queue          -> { length, jobs[] }  (it only)
+
+USER PRESETS (personal TTS bookmarks, user-scoped)
+  GET  /api/presets            -> Preset[]  (current user's presets)
+  POST /api/presets            Create preset
+  PUT  /api/presets/:id        Update preset
+  DELETE /api/presets/:id      Delete preset
+
+GLOBAL PRESETS (admin-managed, system-wide)
+  GET  /api/global-presets     -> GlobalPreset[]  (filtered by allowedUserIds)
+  POST /api/global-presets     Create preset + enqueue audio generation (admin)
+  PUT  /api/global-presets/:id Update preset + re-enqueue audio (admin)
+  DELETE /api/global-presets/:id Delete preset + WAV file (admin)
+  POST /api/global-presets/:id/play  Play preset immediately (preempts queue)
+  POST /api/global-presets/:id/regenerate  Re-generate audio (admin)
+
+SETTINGS
+  GET  /api/settings           -> SystemSettings
+  PUT  /api/settings           Update settings (it)
+
+LOGS
+  GET  /api/logs               -> LogEntry[]  (it only)
+  DELETE /api/logs             Clear all logs (it only)
+  GET  /api/logs/export        Download logs as text file (it only)
+
+SPEAKER CONTROL (direct HTTP Digest proxy)
+  POST /api/speaker/status     { ipAddress, username, password }
+                               -> SpeakerStatus
+  POST /api/speaker/volume/set { ipAddress, username, password, volume }
+  POST /api/speaker/volume/increment  { ipAddress, username, password }
+  POST /api/speaker/volume/decrement  { ipAddress, username, password }
+  POST /api/speaker/mute/set   { ipAddress, username, password, mute_state }
+
+INFO
+  GET  /api/info               -> { lanIP, port, url }  (for QR code page)
+  GET  /api/status             -> { tts, ffmpeg, ... }  (system status checks)
+
+
+--------------------------------------------------------------------------------
+10. TTS ENGINE (KOKORO + PYTHON)
+--------------------------------------------------------------------------------
+File: server/tts-engine.ts + server/kokoro_tts.py
+
+Kokoro TTS is invoked as a Python subprocess. The Node.js server calls:
+  python kokoro_tts.py --text "..." --lang en-us --speed 1.0 --out /tmp/tts_xyz.wav
+
+The Python script:
+  1. Imports kokoro and soundfile
+  2. Initializes the KPipeline for the requested language
+  3. Generates audio samples
+  4. Writes the result to the specified WAV output path
+  5. Exits 0 on success, 1 on error (error message to stderr)
+
+The Node.js wrapper (tts-engine.ts):
+  - Spawns the Python process with a timeout
+  - Resolves with the output WAV path on success
+  - Rejects with the stderr output on failure
+  - Returns { available: false, reason } if python or kokoro is not found
+
+SUPPORTED LANGUAGE CODES (SUPPORTED_LANGUAGES in shared/schema.ts)
+  en-us    English (US)       — built-in, no extra package
+  en-gb    English (UK)       — built-in, no extra package
+  fr       French             — built-in, no extra package
+  es       Spanish            — built-in, no extra package
+  it       Italian            — built-in, no extra package
+  pt       Portuguese         — built-in, no extra package
+  hi       Hindi              — requires: pip install "misaki[hi]"
+
+AVAILABILITY CHECK
+  GET /api/status calls tts-engine.ts checkTtsAvailability(), which runs:
+    python -c "import kokoro" and "ffmpeg -version"
+  Returns { tts: { available: bool, reason?: string }, ffmpeg: { available: bool } }
+
+
+--------------------------------------------------------------------------------
+11. TTS QUEUE
+--------------------------------------------------------------------------------
+File: server/tts-queue.ts
+
+The queue is an in-memory FIFO queue with a single worker. This ensures:
+  - Only one TTS generation + SIP call runs at a time
+  - Multiple concurrent users do not corrupt audio delivery
+  - Each job has an ID that the frontend polls for status
+
+JOB LIFECYCLE
+  queued -> processing -> done | error
+
+  enqueueJob(params)   -> jobId (string)
+  getJobStatus(jobId)  -> { status, progress, error? }
+  getQueueLength()     -> number of pending jobs
+
+The frontend polls GET /api/tts/status/:jobId every 1.5 seconds until
+the job reaches "done" or "error" state.
+
+Global Preset playback bypasses the queue and uses preemption — see section 13.
+
+
+--------------------------------------------------------------------------------
+12. SIP/RTP AUDIO DELIVERY (ffmpeg)
+--------------------------------------------------------------------------------
+File: server/sip-sender.ts
+
+Audio is delivered to speakers by initiating a SIP call via ffmpeg:
+  ffmpeg -re -i <wav_file> -acodec pcm_mulaw -ar 8000 -ac 1
+         -f rtp rtp://<speaker_ip>:<port>
+
+For PG Gateway contacts, a DTMF tone sequence is sent first to select
+the zone, then the audio plays.
+
+SIP SENDER OPTIONS (SipSendOptions)
+  contactId     string    — which contact to page
+  wavPath       string    — path to the WAV file to play
+  preempt?      boolean   — if true, kills any currently running call first
+
+PRIORITY PREEMPTION
+  The module keeps a reference to the active ffmpeg process (activeCallHandle).
+  When preempt: true is passed (used by Global Presets), killActiveCall() is
+  called first, which sends SIGTERM (then SIGKILL if needed) to ffmpeg.
+  This ensures preset announcements interrupt any currently playing TTS job.
+
+CODEC SELECTION
+  Per-contact codec override -> system default codec -> PCMU fallback
+  Supported: PCMU (G.711 µ-law), PCMA (G.711 A-law), G722
+
+
+--------------------------------------------------------------------------------
+13. GLOBAL PRIORITY PRESETS
+--------------------------------------------------------------------------------
+Files: server/routes.ts (/api/global-presets routes), data/presets/<id>.wav
+
+Global Presets are admin-created announcements that:
+  - Are pre-generated at creation time (audio is ready before any user taps)
+  - Play with higher priority: they preempt and interrupt current playback
+  - Have per-user access control (allowedUserIds: null = all, [] = none)
+  - Support bilingual text (two languages in one WAV)
+
+CREATION FLOW
+  1. Admin POSTs to /api/global-presets with text, language, etc.
+  2. Server saves metadata to presets.json with audioReady: false
+  3. Server enqueues a background TTS job immediately
+  4. Job generates WAV (and joins bilingual parts if needed)
+  5. WAV saved to data/presets/<id>.wav
+  6. presets.json updated: audioReady: true, audioGeneratedAt: <timestamp>
+
+PLAYBACK FLOW
+  1. User POSTs /api/global-presets/:id/play
+  2. Server verifies user is allowed (allowedUserIds check)
+  3. sendPresetAudio(preset) called with preempt: true
+  4. killActiveCall() interrupts any currently running ffmpeg process
+  5. New ffmpeg process starts immediately with the pre-generated WAV
+
+STORAGE
+  Metadata: presets.json (array of GlobalPreset objects)
+  Audio:    data/presets/<id>.wav
+  Limit:    10 presets maximum
+
+
+--------------------------------------------------------------------------------
+14. BILINGUAL ANNOUNCEMENTS
+--------------------------------------------------------------------------------
+When both text and secondText are provided (with secondLanguage), the TTS
+engine generates two separate WAV files and concatenates them:
+
+  1. Generate WAV for primary text + language   -> /tmp/tts_<id>_1.wav
+  2. Generate WAV for second text + language    -> /tmp/tts_<id>_2.wav
+  3. Concatenate with 700ms silence between them -> /tmp/tts_<id>.wav
+     (concatenation is done in Node.js by reading both WAV files and
+      joining the PCM samples with a silence buffer)
+  4. Final combined WAV is delivered via SIP/RTP as a single audio stream
+  5. Temporary files are cleaned up after delivery
+
+The SIP call does NOT drop between languages — it is one continuous stream.
+This ensures no gap or re-dial between the two language parts.
+
+
+--------------------------------------------------------------------------------
+15. SPEAKER API (TOA IP-A1 HTTP INTERFACE)
+--------------------------------------------------------------------------------
+For Direct SIP contacts, volume and mute control is available via the TOA
+IP-A1 HTTP API (HTTP Digest Authentication, RFC 2617).
 
 Base URL: http://<speaker_ip>/api/v2/
 
   GET /volume/get_master              Returns current master volume
       Response: { volume: 31, max: 61, min: 0 }
 
-  GET /volume/set_master?volume=N     Sets master volume to N (0–61)
-      Response: { volume: 31 }
+  GET /volume/set_master?volume=N     Sets master volume to N (0-61)
+      Response: { volume: N }
 
   GET /volume/inc_master              Increments volume by 1 step
   GET /volume/dec_master              Decrements volume by 1 step
@@ -191,299 +564,126 @@ Base URL: http://<speaker_ip>/api/v2/
   GET /volume/get_master_mute         Returns mute state
       Response: { mute_state: "mute" | "unmute" }
 
-  GET /volume/set_master_mute?mute_state=mute     Mutes the speaker
-  GET /volume/set_master_mute?mute_state=unmute   Unmutes the speaker
+  GET /volume/set_master_mute?mute_state=mute     Mutes
+  GET /volume/set_master_mute?mute_state=unmute   Unmutes
 
   GET /firmware/model                 Returns model info
-      Response: { model_name: "...", terminal_name: "..." }
 
 Note: All TOA IP-A1 API calls use GET requests (not POST/PUT), even for writes.
-The API documentation is available from TOA Canada / TOA Corporation.
-Refer to the IP-A1 series technical manual for the full API reference.
+Speaker username and password are optional in IV VoxNova — omitting them
+disables volume/mute control but does not affect TTS audio delivery.
+
+DIGEST AUTH IMPLEMENTATION (server/routes.ts)
+  The browser cannot perform HTTP Digest Auth natively. The Express server
+  proxies all speaker API calls:
+  1. Send GET with no Authorization header -> receive 401 + WWW-Authenticate
+  2. Parse the Digest challenge (realm, nonce, qop, algorithm)
+  3. Compute: HA1 = MD5(user:realm:pass), HA2 = MD5(method:uri)
+              response = MD5(HA1:nonce:nc:cnonce:qop:HA2)
+  4. Resend with Authorization: Digest header -> receive data
 
 
 --------------------------------------------------------------------------------
-7. DATA MODEL
+16. FRONTEND (REACT)
 --------------------------------------------------------------------------------
-Defined in shared/schema.ts (Zod schemas, also used for TypeScript types).
-
-  Speaker {
-    id:         string    — UUID-like generated ID
-    label:      string    — Human-readable name (e.g. "Front Speaker")
-    ipAddress:  string    — Speaker's LAN IP (e.g. "192.168.1.101")
-    username:   string    — HTTP Digest username (usually "admin")
-    password:   string    — HTTP Digest password
-  }
-
-  Room {
-    id:         string    — UUID-like generated ID
-    name:       string    — Room name (e.g. "Room 101")
-    speakers:   Speaker[] — One or more speakers in this room
-    syncMode:   boolean   — true = control all speakers together
-  }
-
-  SpeakerStatus {
-    volume:     number    — Current volume (0–61)
-    max:        number    — Maximum volume (typically 61)
-    min:        number    — Minimum volume (typically 0)
-    muteState:  "mute" | "unmute"
-    modelName:  string?   — e.g. "IP-A1S"
-    terminalName: string?
-    connected:  boolean   — Whether the speaker responded successfully
-  }
-
-Rooms are stored in rooms.json at the project root. There is NO database.
-The file is read on every GET /api/rooms and written on every PUT /api/rooms.
-
-MIGRATION: If rooms.json was created by an older version of this app (with a
-flat ipAddress/username/password at the room level instead of a speakers array),
-the server automatically migrates the data to the new format on first read and
-rewrites rooms.json with the new structure.
-
-
---------------------------------------------------------------------------------
-8. BACKEND (EXPRESS SERVER)
---------------------------------------------------------------------------------
-Entry point: server/index.ts
-Routes: server/routes.ts
-
-API ENDPOINTS
-
-  GET  /api/info
-    Returns: { lanIP, port, url }
-    Used by the /connect page to populate the QR code and display the network URL.
-
-  GET  /api/rooms
-    Returns: Room[]  (reads rooms.json)
-    No authentication required — rooms are public (credentials are stored server-side
-    and never exposed to the browser).
-
-  PUT  /api/rooms
-    Body: Room[]
-    Requires: x-admin-password header = "IPA1"  (or ?pw= query param)
-    Writes rooms.json.
-
-  POST /api/speaker/status
-    Body: { ipAddress, username, password }
-    Returns: SpeakerStatus
-    Fires 3 parallel requests to the speaker (volume, mute, model).
-
-  POST /api/speaker/volume/set
-    Body: { ipAddress, username, password, volume: number }
-    Returns: { volume: number }
-
-  POST /api/speaker/volume/increment
-  POST /api/speaker/volume/decrement
-    Body: { ipAddress, username, password }
-    Returns: { volume: number }
-
-  POST /api/speaker/mute/set
-    Body: { ipAddress, username, password, mute_state: "mute" | "unmute" }
-    Returns: { mute_state }
-
-DIGEST AUTHENTICATION IMPLEMENTATION
-  File: server/routes.ts — makeRequest() function
-
-  makeRequest(ipAddress, path, username, password):
-    Step 1: Send GET request with no Authorization header
-    Step 2: Receive 401 + WWW-Authenticate: Digest header
-    Step 3: Parse the Digest challenge (realm, nonce, qop, algorithm)
-    Step 4: Compute MD5 hashes per RFC 2617:
-            HA1 = MD5(username:realm:password)
-            HA2 = MD5(method:uri)
-            response = MD5(HA1:nonce:nc:cnonce:qop:HA2)
-    Step 5: Re-send request with Authorization: Digest header
-    Step 6: Return parsed JSON response
-
-LAN IP DETECTION
-  server/index.ts reads os.networkInterfaces() and picks the last IPv4 address
-  that is NOT internal (127.x) and whose interface name does NOT contain any of:
-    "vethernet", "wsl", "docker", "vpn"
-  This skips virtual adapters common on developer Windows machines.
-  The detected IP is passed to registerRoutes() so the /api/info endpoint and
-  the startup console banner always show the same address.
-
-
---------------------------------------------------------------------------------
-9. FRONTEND (REACT)
---------------------------------------------------------------------------------
-Entry: client/src/main.tsx → App.tsx
+Entry: client/src/main.tsx -> App.tsx
 
 ROUTING (wouter)
-  /          → Home (room list + control panel)
-  /connect   → Connection page (QR code + LAN URL)
+  /          -> Login (if not authenticated) or Home
+  /home      -> Main TTS + volume control UI
+  /admin     -> Admin panel (admin role only)
+  /it        -> IT settings (it role only)
+  /connect   -> QR code connection page
+
+AUTH CONTEXT (client/src/context/AuthContext.tsx)
+  Provides: user, token, login(), logout(), isAuthenticated
+  On login: stores token + user to localStorage
+  On load: reads from localStorage to restore session
+  Token is injected into all API requests by apiFetch() in lib/auth.ts
 
 HOME PAGE (client/src/pages/home.tsx)
-  State lives entirely in the Home component:
-    - rooms[]        — current room list (loaded from server + cached in localStorage)
-    - activeRoom     — which room's control panel is open (null = room list view)
-    - adminMode      — whether the lock is unlocked
-    - syncStatus     — tracks save state for rooms.json
+  - TTS Panel: contact selector, language selector, text input,
+               second language toggle, send button
+  - Personal Presets: saved texts for one-tap sending
+  - Global Priority Presets: rendered as large action buttons
+  - Volume Control Panel: slider, +/-, mute, presets (Direct SIP only)
+  - Queue status display: shows position in queue while processing
 
-  Key components:
-    AddRoomDialog    — Multi-speaker room creation/editing form
-    AdminPasswordDialog — Password gate for admin features
-    RoomTile         — Single room card (shows speaker count badge if >1)
-    RoomList         — Grid of room tiles with search
-    VolumeKnobDisplay — Circular SVG volume indicator
-    useSpeakerState  — Custom hook: manages volume/mute state for one speaker
-    IndividualSpeakerCard — Full controls for one speaker (used in individual mode)
-    VolumeControls   — Shared slider + buttons + presets UI block
-    ControlPanel     — Top-level room control view (sync or individual mode)
+ADMIN PAGE (client/src/pages/admin.tsx)
+  - Users tab: create/edit/delete users, assign contacts, manage presets
+  - Contacts tab: create/edit/delete contacts (Direct SIP or PG Gateway)
+  - Global Presets tab: create/edit/delete presets, manage access control,
+                        view audio generation status, regenerate audio
 
-CUSTOM HOOK: useSpeakerState(speaker, showToasts)
-  - Polls /api/speaker/status every 10 seconds
-  - Manages sliderValue (local optimistic UI) vs server volume
-  - Debounces slider changes by 300ms before firing API call
-  - Tracks connection loss/recovery; shows toasts if showToasts=true
-  - Exposes: status, loading, changingVolume, currentVolume, maxVolume,
-             isMuted, setVolume, handleSliderChange, toggleMute,
-             setMuteState, adjustVolume, setSliderValue
-
-ROOM STORAGE (localStorage)
-  Key: "toa_rooms"
-  On load: try server first, fall back to localStorage cache if offline
-  On save: write to server AND localStorage simultaneously
-  Migration: old flat-format rooms are migrated to speakers[] on load
-
-OFFLINE BEHAVIOR
-  If the server cannot be reached for rooms.json:
-    - The room list falls back to the localStorage cache
-    - A "Local only — tap to retry" button appears in the header
-    - Volume/mute changes still work (they go to speakers directly via the proxy)
+IT SETTINGS PAGE (client/src/pages/it-settings.tsx)
+  - System status indicators (TTS engine, ffmpeg, paging gateway)
+  - Paging Gateway configuration (multiple gateways)
+  - TTS engine settings (codec, delays, chime, voice speed)
+  - Contacts export/import
+  - Config export/import
+  - System logging (view, export, clear, configure retention)
 
 
 --------------------------------------------------------------------------------
-10. CONFIGURATION & ROOM STORAGE
+17. CONFIGURATION & STORAGE FILES
 --------------------------------------------------------------------------------
-rooms.json format (current version):
-[
-  {
-    "id": "lrk7abc12",
-    "name": "Room 101",
-    "syncMode": true,
-    "speakers": [
-      {
-        "id": "lrk7def34",
-        "label": "Front Speaker",
-        "ipAddress": "192.168.1.101",
-        "username": "admin",
-        "password": "admin"
-      },
-      {
-        "id": "lrk7ghi56",
-        "label": "Rear Speaker",
-        "ipAddress": "192.168.1.102",
-        "username": "admin",
-        "password": "admin"
-      }
-    ]
-  }
-]
+All files are auto-created with safe defaults on first run.
 
-The file is created automatically if it does not exist.
-Speaker passwords ARE stored in plain text. This is acceptable for a
-closed LAN environment without internet exposure. Do not expose this
-server to the public internet.
+rooms.json (project root)
+  Array of Contact objects. See section 8 for example.
+  Written by: POST/PUT/DELETE /api/contacts, POST /api/contacts/import
+
+presets.json (project root)
+  Array of GlobalPreset objects.
+  Written by: POST/PUT/DELETE /api/global-presets
+
+data/users.json
+  Array of User objects (with bcrypt-hashed passwords).
+  Written by: POST/PUT/DELETE /api/users
+
+data/settings.json
+  Single SystemSettings object.
+  Written by: PUT /api/settings
+
+data/logs.json
+  Array of LogEntry objects (newest last).
+  Auto-trimmed based on the configured retention period.
+
+data/presets/<id>.wav
+  Pre-generated audio files for Global Presets.
+  Created by the TTS engine; deleted when the preset is deleted.
 
 
 --------------------------------------------------------------------------------
-11. AUTHENTICATION FLOW (HTTP DIGEST)
---------------------------------------------------------------------------------
-HTTP Digest Authentication (RFC 2617) works like this:
-
-  Client → Server:  GET /api/v2/volume/get_master
-  Server → Client:  401 Unauthorized
-                    WWW-Authenticate: Digest realm="...", nonce="...", qop="auth"
-
-  Client computes:
-    HA1      = MD5( username ":" realm ":" password )
-    HA2      = MD5( method ":" requestURI )
-    nc       = 00000001  (request count, hex)
-    cnonce   = random hex string
-    response = MD5( HA1 ":" nonce ":" nc ":" cnonce ":" qop ":" HA2 )
-
-  Client → Server:  GET /api/v2/volume/get_master
-                    Authorization: Digest username="admin",
-                      realm="...", nonce="...", uri="...",
-                      nc=00000001, cnonce="...", response="..."
-
-The TOA IP-A1 speaker accepts this and returns the requested data.
-Implementation is in server/routes.ts — parseDigestChallenge() and
-createDigestHeader() functions, called by makeRequest().
-
-
---------------------------------------------------------------------------------
-12. MULTI-SPEAKER GROUPING
---------------------------------------------------------------------------------
-A Room can contain any number of Speaker objects.
-
-SYNC MODE (room.syncMode = true, default)
-  - The UI shows one master volume knob and controls
-  - useSpeakerState hook tracks the PRIMARY speaker (speakers[0])
-  - All other speakers are polled every 10s for connection status only
-  - When volume/mute changes: the request fires to ALL speakers in parallel
-    using Promise.allSettled() (failures for individual speakers are silent)
-  - The volume knob shows the primary speaker's volume
-
-INDIVIDUAL MODE (user toggles "Synced" → "Individual")
-  - The UI shows a scrollable list of IndividualSpeakerCard components
-  - Each card is a fully independent React component that manages its own
-    useSpeakerState hook, with its own slider, mute button, and presets
-  - No cross-speaker coordination
-
-ROOM TILE BADGE
-  - If speakers.length === 1: no badge
-  - If speakers.length > 1: a small circular badge shows the count
-
-SEARCH
-  - The search bar (appears with >5 rooms) matches:
-    - Room name
-    - Speaker labels
-    - Speaker IP addresses
-
-
---------------------------------------------------------------------------------
-13. NETWORK DISCOVERY & QR CODE
---------------------------------------------------------------------------------
-File: client/src/pages/connect.tsx
-
-On load, the page fetches GET /api/info which returns:
-  { lanIP: "192.168.1.50", port: 5000, url: "http://192.168.1.50:5000" }
-
-The page displays:
-  - A large QR code encoding the full URL
-  - The URL in text form
-  - Instructions for connecting phones and tablets
-
-The QR code is generated entirely in the browser using qrcode.react.
-No internet connection is required for QR code generation.
-
-start.bat opens this page automatically in the default browser 4 seconds
-after the server starts, using: start http://localhost:5000/connect
-
-
---------------------------------------------------------------------------------
-14. PRODUCTION BUILD & start.bat
+18. PRODUCTION BUILD & start.bat
 --------------------------------------------------------------------------------
 start.bat (Windows launcher):
-  1. Checks if dist\public\index.html exists
-  2. If not: runs  npx tsx script/build.ts  (one-time build)
-  3. Runs: node dist\index.cjs
-  4. After 4 seconds: opens http://localhost:5000/connect in default browser
+  1. Checks for Node.js in PATH
+  2. Checks/installs Python packages (kokoro, soundfile, misaki[hi])
+     Each package is installed individually with goto-label error handling
+  3. Runs npm install --no-audit if node_modules is missing
+  4. Checks if dist\public\index.html exists
+     - If not: runs  npx tsx script/build.ts  (one-time build)
+  5. Runs: node dist\index.cjs
+  6. After 4 seconds: opens http://localhost:5000/connect in default browser
 
 script/build.ts:
-  - Runs Vite build → produces dist/public/ (HTML + CSS + JS)
-  - Runs esbuild → bundles server/index.ts to dist/index.cjs
+  - Runs Vite build -> dist/public/ (HTML + CSS + JS)
+  - Runs esbuild -> bundles server/index.ts to dist/index.cjs
   - Both steps run sequentially
 
+NOTE ON start.bat CONDITIONALS:
+  All conditional logic with echo messages containing parentheses MUST use
+  goto labels (not nested if/else blocks). Windows cmd.exe misparses
+  parentheses inside if/else blocks and crashes with syntax errors.
+
 When to delete dist/ and rebuild:
-  - After any code change (delete dist\ folder, run start.bat)
+  - After any code change (delete dist\ folder, run start.bat again)
   - The app does NOT hot-reload in production mode
 
 Production vs Development:
   Production (node dist\index.cjs):
-    - CSS is a real .css file in dist/public/assets/
+    - CSS is a compiled .css file in dist/public/assets/
     - Compatible with all browsers including older iOS Safari
     - Required for phones/tablets on the LAN
 
@@ -494,93 +694,109 @@ Production vs Development:
 
 
 --------------------------------------------------------------------------------
-15. DEVELOPMENT MODE
+19. DEVELOPMENT MODE
 --------------------------------------------------------------------------------
 npm run dev
-  Starts tsx (TypeScript executor) running server/index.ts in development mode.
+  Starts tsx running server/index.ts in development mode.
   Vite dev server is embedded in the Express app (not a separate port).
   Hot module replacement works for frontend changes.
 
-NOTE: On Windows with PowerShell, NODE_ENV=development may not be set correctly.
-If needed, install cross-env:
-  npm install cross-env
-Then change package.json dev script to:
-  "dev": "cross-env NODE_ENV=development tsx server/index.ts"
+The app serves the React frontend and API on the same port (5000) in both
+development and production. There is no separate dev server port.
+
+NOTE: python3 is not in the PATH in Replit's NixOS environment, so TTS status
+will show "Unavailable" in the dev environment — this is expected and normal.
 
 
 --------------------------------------------------------------------------------
-16. ENVIRONMENT VARIABLES
+20. ENVIRONMENT VARIABLES
 --------------------------------------------------------------------------------
   PORT            Server port (default: 5000)
   NODE_ENV        "development" or "production"
-  SESSION_SECRET  Not used by current code; present from template scaffold
+  JWT_SECRET      Secret for signing JWT tokens (auto-generated if not set)
 
-No .env file is required. The app works out of the box.
+No .env file is required. The app runs with safe defaults out of the box.
+For production deployments, set JWT_SECRET to a strong random value.
 
 
 --------------------------------------------------------------------------------
-17. COMMON ISSUES & DEBUGGING
+21. COMMON ISSUES & DEBUGGING
 --------------------------------------------------------------------------------
+ISSUE: TTS status shows "Unavailable"
+  FIX: Ensure Python 3.12 is installed and in PATH.
+       Run: python --version  (must show 3.12.x)
+       Run: pip install kokoro soundfile
+       Restart the app.
+
+ISSUE: Korean or Mandarin TTS fails with language dict error
+  NOTES: Korean and Mandarin are not supported by the current Kokoro build.
+         They have been removed from the supported language list.
+
+ISSUE: Hindi TTS fails
+  FIX: Run: pip install "misaki[hi]"
+       start.bat does this automatically, but may need re-running.
+
+ISSUE: SIP audio plays but cuts off / zone doesn't activate
+  FIX: Increase the DTMF Delay in IT Settings -> TTS Engine Settings.
+       Also check Post-Announcement Delay.
+
 ISSUE: QR code / /api/info shows wrong IP (e.g. WSL or Docker IP)
   FIX: The LAN IP detection skips adapters named vethernet, wsl, docker, vpn.
        If you have an unusual virtual adapter, check server/index.ts and add
        its name to the exclusion list.
 
-ISSUE: Speaker returns 401 every time (Digest auth never succeeds)
-  FIX: Check username/password. Default is admin/admin on most TOA units.
-       Some units have been configured with custom credentials.
+ISSUE: Global Preset shows "Error" status
+  FIX: Click the regenerate button on the preset.
+       Check IT Settings -> Logs for the TTS error message.
+       Ensure the TTS engine is available.
 
-ISSUE: Speaker is unreachable (red dot)
-  FIX: Ping the speaker IP from the server PC. Check that:
-       - The speaker is powered on and connected to the network
-       - The speaker and server PC are on the same subnet
-       - No firewall is blocking HTTP on port 80 (default speaker port)
+ISSUE: Contact import only shows PG contacts
+  CAUSE: speakerSchema previously required username/password to be non-empty.
+         Direct contacts saved with empty credentials were rejected by the API.
+  FIX: Already resolved — username and password are now optional in
+       speakerSchema (they default to empty string).
+       Re-create any direct contacts that failed to save.
 
-ISSUE: rooms.json keeps resetting / not saving
-  FIX: Check file permissions. The server must have write access to the
-       project root directory. On Windows, avoid placing the project in
-       Program Files or other protected directories.
+ISSUE: rooms.json keeps resetting
+  FIX: Check file write permissions on the project root directory.
+       Avoid placing the project in Program Files or protected directories.
 
-ISSUE: "Failed to save to config file" toast on mobile
-  FIX: Rooms are saved via PUT /api/rooms which requires the admin password
-       header. This is sent automatically by the frontend. If it fails,
-       check the browser network tab for the actual HTTP error.
-
-ISSUE: CSS doesn't load on iOS Safari over LAN
-  FIX: Make sure you are running the production build (start.bat / node dist\index.cjs)
-       not the development server. The dev server uses dynamic CSS injection
-       which is blocked by some iOS Safari versions.
-
-ISSUE: App shows "offline" even though the server is running
-  FIX: The browser cannot reach /api/rooms. This usually means the browser
-       is trying to reach a different IP or port. Check the URL in the
-       browser address bar matches the server's LAN IP:5000.
+ISSUE: Admin password modal doesn't grey out the page properly
+  FIX: Modal backdrop uses z-[200] which is above the sticky header (z-40).
+       If this breaks after UI changes, ensure z-[200] is maintained.
 
 
 --------------------------------------------------------------------------------
-18. EXTENDING THE APP
+22. EXTENDING THE APP
 --------------------------------------------------------------------------------
-Adding a new volume preset:
-  Edit VOLUME_PRESETS array in client/src/pages/home.tsx.
-  Each entry: { label: string, value: number (0-61), icon: LucideIcon }
+ADDING A NEW TTS LANGUAGE
+  1. Verify the language is supported by the installed Kokoro version
+     (run: python -c "from kokoro import KPipeline; KPipeline(lang_code='xx')"
+      where xx is the Kokoro language code)
+  2. Add to SUPPORTED_LANGUAGES in shared/schema.ts:
+       { code: "xx", label: "Language Name", extraPkg: null }
+     or with a required package:
+       { code: "xx", label: "Language Name", extraPkg: "package-name" }
+  3. If extraPkg is set, add an install block to start.bat using the
+     goto-label pattern (see the Hindi/HI_DONE block as a template)
+  4. The UI dropdowns and warning banners update automatically
 
-Adding a new speaker API action:
-  1. Add route in server/routes.ts using makeRequest()
-  2. Call it from the frontend via fetch("/api/speaker/new-action", ...)
+ADDING A NEW USER ROLE
+  1. Add the role to the userSchema role enum in shared/schema.ts
+  2. Add requireRole() checks to the relevant API routes in server/routes.ts
+  3. Update the frontend role badge styles in admin.tsx (RoleBadge component)
+  4. Update access checks in AuthContext.tsx and home.tsx as needed
 
-Changing the admin password:
-  Two places must match:
-    - client/src/pages/home.tsx  →  const ADMIN_PASSWORD = "IPA1"
-    - server/routes.ts           →  const ADMIN_PASSWORD = "IPA1"
+ADDING A NEW API ENDPOINT
+  1. Add the route handler in server/routes.ts inside registerRoutes()
+  2. Add appropriate requireAuth() and requireRole() middleware
+  3. Validate the request body with Zod schemas from shared/schema.ts
+  4. Use the JSON file helpers (readRoomsConfig, writeRoomsConfig, etc.)
+     or write a new helper following the same pattern
 
-Adding a database (for multi-server sync):
-  Replace rooms.json read/write in server/routes.ts with a database adapter.
-  The schema is already in shared/schema.ts.
-  Drizzle ORM is set up in drizzle.config.ts if you want to use PostgreSQL.
-
-Deploying to a server (not local):
-  The app works on any Node.js host. Change PORT environment variable as needed.
-  Do not expose to the public internet if rooms.json contains speaker passwords.
+CHANGING THE PORT
+  Set the PORT environment variable before starting the server.
+  The default is 5000. The QR code and /api/info update automatically.
 
 
 ================================================================================
