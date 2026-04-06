@@ -1182,5 +1182,94 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     res.json({ jobId, queued: true });
   });
 
+  // ─── Multi-Management: sync receiver multicast config ─────────────────────
+  app.post("/api/multi-management/sync", requireAuth, requireRole("it", "admin"), async (req, res) => {
+    try {
+      const contacts = readRoomsConfig();
+      const settings = getSettings();
+      const directContacts = contacts.filter((c: any) => c.mode === "direct");
+
+      const results: any[] = [];
+      for (const contact of directContacts) {
+        const speakers: any[] = contact.speakers || [];
+        for (const speaker of speakers) {
+          const hasAuth = !!(speaker.username?.trim() && speaker.password?.trim());
+          if (!hasAuth) {
+            results.push({
+              speakerId: speaker.id,
+              contactId: contact.id,
+              contactName: contact.name,
+              label: speaker.label,
+              ipAddress: speaker.ipAddress,
+              status: "no-auth",
+              channels: [],
+            });
+            continue;
+          }
+          try {
+            const data = await makeRequest(
+              speaker.ipAddress,
+              "/api/v2/multicast/get_list",
+              speaker.username,
+              speaker.password
+            );
+            const rawChannels = data?.response;
+            const channels: any[] = [];
+            if (Array.isArray(rawChannels)) {
+              rawChannels.forEach((ch: any, idx: number) => {
+                channels.push({
+                  channelId: ch.channel ?? ch.id ?? idx + 1,
+                  name: ch.name ?? ch.label ?? `Channel ${idx + 1}`,
+                  address: ch.address ?? ch.multicast_address ?? "",
+                  port: ch.port ?? 4001,
+                  active: !!(ch.enabled ?? ch.active ?? ch.subscribed ?? false),
+                });
+              });
+            } else if (rawChannels && typeof rawChannels === "object") {
+              const keys = Object.keys(rawChannels);
+              keys.forEach((k, idx) => {
+                const ch = rawChannels[k];
+                channels.push({
+                  channelId: idx + 1,
+                  name: ch.name ?? ch.label ?? `Channel ${idx + 1}`,
+                  address: ch.address ?? "",
+                  port: ch.port ?? 4001,
+                  active: !!(ch.enabled ?? ch.active ?? false),
+                });
+              });
+            }
+            results.push({
+              speakerId: speaker.id,
+              contactId: contact.id,
+              contactName: contact.name,
+              label: speaker.label,
+              ipAddress: speaker.ipAddress,
+              status: channels.length > 0 ? "ok" : "no-data",
+              channels,
+            });
+          } catch {
+            results.push({
+              speakerId: speaker.id,
+              contactId: contact.id,
+              contactName: contact.name,
+              label: speaker.label,
+              ipAddress: speaker.ipAddress,
+              status: "offline",
+              channels: [],
+            });
+          }
+        }
+      }
+
+      res.json({
+        receivers: results,
+        pgs: settings.pgs ?? [],
+        syncedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

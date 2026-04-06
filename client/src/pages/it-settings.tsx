@@ -10,8 +10,9 @@ import { SUPPORTED_LANGUAGES } from "@shared/schema";
 import {
   ArrowLeft, Settings, Radio, Mic, FileText, Trash2,
   Save, AlertCircle, CheckCircle2, Loader2, RefreshCw, ChevronDown, ChevronRight, Plus,
-  Download, Upload, Zap, X, Pencil, Globe, AlertTriangle,
+  Download, Upload, Zap, X, Pencil, Globe, AlertTriangle, LayoutGrid,
 } from "lucide-react";
+import MultiManagement from "./multi-management";
 
 const INPUT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent transition-all text-sm";
 const SELECT_CLS = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF8200] focus:border-transparent text-sm";
@@ -77,6 +78,7 @@ export default function ItSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<any>(null);
   const [presets, setPresets] = useState<GlobalPreset[]>([]);
+  const [activeTab, setActiveTab] = useState<"settings" | "multi">("settings");
   const [showPresetForm, setShowPresetForm] = useState(false);
   const [editingPreset, setEditingPreset] = useState<GlobalPreset | null>(null);
   const [presetName, setPresetName] = useState("");
@@ -435,6 +437,39 @@ export default function ItSettingsPage() {
         </div>
       </header>
 
+      {/* Tab bar */}
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <div className="max-w-6xl mx-auto px-4 flex items-center gap-1">
+          {([
+            { key: "settings", label: "Settings", icon: Settings },
+            { key: "multi",    label: "Multi-Management", icon: LayoutGrid },
+          ] as const).map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              data-testid={`tab-${key}`}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === key
+                  ? "border-[#FF8200] text-[#FF8200]"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Multi-Management tab */}
+      {activeTab === "multi" && (
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <MultiManagement />
+        </div>
+      )}
+
+      {/* Settings tab */}
+      {activeTab === "settings" && (
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-5">
         {/* System Status — 3 cards: Server, TTS Engine, Paging Gateway */}
         {status && (
@@ -899,6 +934,7 @@ export default function ItSettingsPage() {
           </div>
         </Card>
       </main>
+      )}
     </div>
   );
 }
