@@ -7,10 +7,10 @@ import {
 } from "lucide-react";
 
 const NUM_CHANNELS = 20;
-const COL_W = 34;
+const COL_W = 56;
 const ROW_H = 50;
-const HEADER_H = 132;
-const STICKY_W = 192;
+const HEADER_H = 148;
+const STICKY_W = 200;
 
 // Zone accent colors (cycling) — teal, indigo, violet, amber, rose
 const ZONE_COLORS = [
@@ -472,29 +472,28 @@ export default function MultiManagement() {
                           top: 0, left: 0, right: 0, bottom: 0,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "flex-end",
-                          paddingBottom: pgActive ? 14 : 8,
+                          justifyContent: "center",
                         }}>
                           <div style={{
                             transform: "rotate(-90deg)",
                             transformOrigin: "center center",
-                            width: HEADER_H - 12,
+                            width: HEADER_H - 16,
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "flex-start",
-                            gap: 1,
+                            gap: 2,
                             overflow: "hidden",
                           }}>
-                            <span className={`text-[10px] font-bold leading-tight truncate w-full ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-700 dark:text-slate-200"}`}>
+                            <span className={`text-[11px] font-bold leading-tight truncate w-full ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-100"}`}>
                               CH {ch}
                             </span>
                             {chName && (
-                              <span className={`text-[9px] font-semibold leading-tight truncate w-full ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-500 dark:text-slate-400"}`}>
+                              <span className={`text-[11px] font-medium leading-tight truncate w-full ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-600 dark:text-slate-300"}`}>
                                 {chName}
                               </span>
                             )}
                             {chIp && (
-                              <span className="text-[8px] font-mono leading-tight truncate w-full text-slate-400 dark:text-slate-500">
+                              <span className="text-[10px] font-mono leading-tight truncate w-full text-slate-400 dark:text-slate-500">
                                 {chIp}
                               </span>
                             )}
