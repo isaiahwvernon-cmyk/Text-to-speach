@@ -1,36 +1,23 @@
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import {
-  RefreshCw, Wifi, WifiOff, AlertTriangle, CheckCircle2,
-  Radio, Loader2, Monitor, Eye, EyeOff, Info
-} from "lucide-react";
+import { RefreshCw, Loader2, Monitor, Radio, Lock } from "lucide-react";
 
 const NUM_CHANNELS = 20;
+const COL_W = 34;
+const ROW_H = 36;
+const HEADER_H = 108;
+const STICKY_W = 172;
 
-type ChannelInfo = {
-  channelId: number;
-  name: string;
-  address: string;
-  port: number;
-  active: boolean;
-};
-
-type ReceiverStatus = "ok" | "offline" | "no-auth" | "no-data" | "error";
-
+type ChannelInfo  = { channelId: number; name: string; address: string; port: number; active: boolean };
+type ReceiverStatus = "ok" | "offline" | "no-auth" | "no-data";
 type ReceiverResult = {
-  speakerId: string;
-  contactId: string;
-  contactName: string;
-  label: string;
-  ipAddress: string;
-  status: ReceiverStatus;
-  channels: ChannelInfo[];
+  speakerId: string; contactId: string; contactName: string;
+  label: string; ipAddress: string; status: ReceiverStatus; channels: ChannelInfo[];
 };
-
 type SyncResult = {
   receivers: ReceiverResult[];
-  pgs: { id: string; name: string; address: string; port: number }[];
+  pgs: { id: string; name: string; address: string; port: number; defaultExtension: string }[];
   syncedAt: string;
 };
 
@@ -39,7 +26,7 @@ function buildChannelHeaders(receivers: ReceiverResult[]): { channelId: number; 
   for (const r of receivers) {
     for (const ch of r.channels) {
       if (!nameMap[ch.channelId]) nameMap[ch.channelId] = {};
-      const n = ch.name || `CH ${ch.channelId}`;
+      const n = ch.name.trim() || `CH ${ch.channelId}`;
       nameMap[ch.channelId][n] = (nameMap[ch.channelId][n] ?? 0) + 1;
     }
   }
@@ -56,11 +43,26 @@ function isMobilePhone() {
   return window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
 }
 
+const STATUS_DOT: Record<ReceiverStatus, string> = {
+  ok:      "bg-teal-500",
+  offline: "bg-red-400",
+  "no-data": "bg-amber-400",
+  "no-auth": "bg-slate-300 dark:bg-slate-600",
+};
+
+const STATUS_LABEL: Record<ReceiverStatus, string> = {
+  ok:      "Synced",
+  offline: "Offline",
+  "no-data": "No data",
+  "no-auth": "No credentials",
+};
+
 export default function MultiManagement() {
   const { toast } = useToast();
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing]   = useState(false);
   const [syncData, setSyncData] = useState<SyncResult | null>(null);
   const [activeOnly, setActiveOnly] = useState(false);
+  const [selectedPgIdx, setSelectedPgIdx] = useState(0);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const checkedMobile = useRef(false);
 
@@ -82,7 +84,12 @@ export default function MultiManagement() {
       }
       const data: SyncResult = await res.json();
       setSyncData(data);
-      toast({ title: "Sync complete", description: `${data.receivers.length} receiver(s) queried` });
+      const ok = data.receivers.filter(r => r.status === "ok").length;
+      const offline = data.receivers.filter(r => r.status === "offline").length;
+      toast({
+        title: "Sync complete",
+        description: `${ok} online · ${offline} offline · ${data.receivers.length} total`,
+      });
     } catch (e: any) {
       toast({ title: "Sync error", description: e.message, variant: "destructive" });
     } finally {
@@ -90,23 +97,19 @@ export default function MultiManagement() {
     }
   }
 
-  const receivers = syncData?.receivers ?? [];
-  const activeReceivers = receivers.filter((r) => r.status !== "no-auth");
-  const offlineReceivers = receivers.filter((r) => r.status === "no-auth");
-  const channelHeaders = buildChannelHeaders(activeReceivers);
-
+  const pgs = syncData?.pgs ?? [];
+  const allReceivers = syncData?.receivers ?? [];
+  const channelHeaders = buildChannelHeaders(allReceivers);
   const visibleChannels = activeOnly
-    ? channelHeaders.filter((ch) =>
-        activeReceivers.some((r) => r.channels.find((c) => c.channelId === ch.channelId && c.active))
-      )
+    ? channelHeaders.filter(ch => allReceivers.some(r => r.channels.find(c => c.channelId === ch.channelId && c.active)))
     : channelHeaders;
 
-  const pgName = syncData?.pgs?.[0]?.name ?? "PG Gateway";
-  const pgAddress = syncData?.pgs?.[0]?.address ?? "";
+  const selectedPg = pgs[selectedPgIdx] ?? null;
 
   return (
-    <div className="relative">
-      {/* Mobile warning overlay */}
+    <div className="relative select-none">
+
+      {/* ── Mobile warning ──────────────────────────────────────────────────── */}
       {showMobileWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-7 text-center space-y-4">
@@ -119,231 +122,225 @@ export default function MultiManagement() {
                 The Multi-Management matrix is designed for larger screens. Please open this page on a PC or tablet for the best experience.
               </p>
             </div>
-            <button
-              onClick={() => setShowMobileWarning(false)}
-              className="w-full py-2.5 rounded-xl bg-[#FF8200] text-white font-semibold text-sm hover:bg-[#e07200] transition-colors"
-            >
+            <button onClick={() => setShowMobileWarning(false)}
+              className="w-full py-2.5 rounded-xl bg-[#FF8200] text-white font-semibold text-sm hover:bg-[#e07200] transition-colors">
               Continue Anyway
             </button>
           </div>
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-[#FF8200]/10 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Radio className="w-5 h-5 text-[#FF8200]" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-900 dark:text-white">Multicast Channel Matrix</div>
-            <div className="text-xs text-slate-400">
-              {syncData
-                ? `Last synced: ${new Date(syncData.syncedAt).toLocaleTimeString()}`
-                : "Press Sync to read receiver configurations"}
-            </div>
+      {/* ── Top toolbar ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-slate-900 dark:text-white text-sm">Multicast Channel Matrix</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            {syncData
+              ? `Last synced ${new Date(syncData.syncedAt).toLocaleTimeString()} · ${allReceivers.length} receiver${allReceivers.length !== 1 ? "s" : ""}`
+              : "Press Sync to read receiver configurations"}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Active only toggle */}
-          <button
-            onClick={() => setActiveOnly((v) => !v)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
-              activeOnly
-                ? "bg-[#FF8200]/10 border-[#FF8200] text-[#FF8200]"
-                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-            }`}
-            title={activeOnly ? "Showing active channels only" : "Showing all 20 channels"}
-          >
-            {activeOnly ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            {activeOnly ? "Active Channels Only" : "All 20 Channels"}
-          </button>
-
-          {/* Sync button */}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            data-testid="button-multicast-sync"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF8200] text-white text-sm font-semibold hover:bg-[#e07200] disabled:opacity-60 transition-colors shadow-sm shadow-orange-100"
-          >
-            {syncing
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Syncing…</>
-              : <><RefreshCw className="w-4 h-4" />Sync</>}
-          </button>
-        </div>
-      </div>
-
-      {/* No-auth (grayed out) receivers */}
-      {offlineReceivers.length > 0 && (
-        <div className="mb-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-              Receivers without credentials ({offlineReceivers.length})
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mb-3">
-            These devices are configured in the system but are missing a username and/or password. Update their info in Contacts to include them in the sync.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {offlineReceivers.map((r) => (
-              <div
-                key={r.speakerId}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 opacity-60"
-              >
-                <WifiOff className="w-3.5 h-3.5 text-slate-400" />
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{r.label}</div>
-                  <div className="text-[10px] text-slate-400">{r.ipAddress}</div>
-                </div>
-              </div>
+        {/* PG selector — only visible if >1 PG */}
+        {pgs.length > 1 && (
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+            {pgs.map((pg, idx) => (
+              <button key={pg.id} onClick={() => setSelectedPgIdx(idx)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                  selectedPgIdx === idx
+                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}>
+                {pg.name || `PG ${idx + 1}`}
+              </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Pre-sync placeholder */}
+        {/* All/Active toggle */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+          {[
+            { label: "All Channels", val: false },
+            { label: "Active Only",  val: true },
+          ].map(opt => (
+            <button key={String(opt.val)} onClick={() => setActiveOnly(opt.val)}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                activeOnly === opt.val
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Sync button */}
+        <button onClick={handleSync} disabled={syncing} data-testid="button-multicast-sync"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF8200] text-white text-xs font-bold hover:bg-[#e07200] disabled:opacity-60 transition-colors shadow shadow-orange-100">
+          {syncing
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Syncing…</>
+            : <><RefreshCw className="w-3.5 h-3.5" />Sync</>}
+        </button>
+      </div>
+
+      {/* ── Pre-sync / syncing state ─────────────────────────────────────────── */}
       {!syncData && !syncing && (
-        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-16 text-center">
-          <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Radio className="w-7 h-7 text-slate-400" />
-          </div>
-          <div className="font-semibold text-slate-600 dark:text-slate-300 mb-1">No sync data yet</div>
-          <div className="text-sm text-slate-400 mb-6">
-            Click <strong>Sync</strong> to read the multicast channel configuration from all receiver devices.
-          </div>
-          <button
-            onClick={handleSync}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF8200] text-white text-sm font-semibold hover:bg-[#e07200] transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />Sync Now
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-16 text-center">
+          <Radio className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+          <div className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">No sync data yet</div>
+          <div className="text-xs text-slate-400 mb-5">Click Sync to read multicast channel configuration from all receiver devices</div>
+          <button onClick={handleSync}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF8200] text-white text-xs font-bold hover:bg-[#e07200] transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />Sync Now
           </button>
         </div>
       )}
 
       {syncing && (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-16 text-center">
-          <Loader2 className="w-10 h-10 text-[#FF8200] animate-spin mx-auto mb-4" />
-          <div className="text-sm text-slate-500">Reading receiver configurations…</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-16 text-center">
+          <Loader2 className="w-8 h-8 text-[#FF8200] animate-spin mx-auto mb-3" />
+          <div className="text-xs text-slate-400">Reading receiver configurations…</div>
         </div>
       )}
 
-      {/* Matrix */}
-      {syncData && !syncing && activeReceivers.length === 0 && (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center text-slate-400 text-sm">
-          No credentialed receiver devices found. Add direct-mode contacts with IP credentials to see the matrix.
-        </div>
-      )}
+      {/* ── Matrix ──────────────────────────────────────────────────────────── */}
+      {syncData && !syncing && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
 
-      {syncData && !syncing && activeReceivers.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-          {/* PG header bar */}
-          <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 flex items-center gap-3">
-            <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center">
-              <Radio className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{pgName}</span>
-            {pgAddress && (
-              <span className="text-xs text-blue-500 dark:text-blue-400 font-mono">{pgAddress}</span>
+          {/* PG label bar */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+            <Radio className="w-3.5 h-3.5 text-[#FF8200] flex-shrink-0" />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+              {selectedPg?.name || "PG Gateway"}
+            </span>
+            {selectedPg?.address && (
+              <span className="text-[10px] text-slate-400 font-mono">{selectedPg.address}</span>
             )}
-            <span className="ml-auto text-xs text-blue-400">
-              {visibleChannels.length} {activeOnly ? "active" : "total"} channel{visibleChannels.length !== 1 ? "s" : ""}
+            <span className="ml-auto text-[10px] text-slate-400">
+              {visibleChannels.length} channel{visibleChannels.length !== 1 ? "s" : ""}
+              {activeOnly ? " (active)" : ""}
             </span>
           </div>
 
-          {/* Scrollable matrix table */}
-          <div className="overflow-auto max-h-[calc(100vh-380px)] min-h-[200px]">
-            <table className="border-collapse min-w-full text-xs">
+          {/* Scrollable matrix */}
+          <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)", minHeight: 160 }}>
+            <table className="border-collapse" style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: STICKY_W }} />
+                {visibleChannels.map(ch => <col key={ch.channelId} style={{ width: COL_W }} />)}
+              </colgroup>
+
               <thead>
                 <tr>
-                  {/* Sticky top-left corner */}
-                  <th className="sticky left-0 top-0 z-30 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-4 py-3 text-left min-w-[200px]">
-                    <div className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px]">Receiver</div>
+                  {/* Corner cell */}
+                  <th
+                    className="sticky left-0 top-0 z-30 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700"
+                    style={{ height: HEADER_H, width: STICKY_W, minWidth: STICKY_W }}
+                  >
+                    <span className="block px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-left">
+                      Receiver
+                    </span>
                   </th>
-                  {/* Channel headers */}
-                  {visibleChannels.map((ch) => (
+
+                  {/* Channel headers — rotated text */}
+                  {visibleChannels.map(ch => (
                     <th
                       key={ch.channelId}
-                      className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 py-2 min-w-[80px] text-center"
+                      className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 p-0 text-center"
+                      style={{ height: HEADER_H, width: COL_W, minWidth: COL_W, maxWidth: COL_W }}
                     >
-                      <div className="font-bold text-slate-700 dark:text-slate-200 text-[11px]">CH {ch.channelId}</div>
-                      {ch.name !== `CH ${ch.channelId}` && (
-                        <div className="text-[9px] text-slate-400 truncate max-w-[72px] mx-auto" title={ch.name}>
-                          {ch.name}
-                        </div>
-                      )}
+                      <div className="flex flex-col items-center justify-end h-full pb-2 gap-1">
+                        <span
+                          className="text-[10px] font-bold text-slate-600 dark:text-slate-300 leading-none"
+                          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap" }}
+                        >
+                          {ch.name !== `CH ${ch.channelId}` ? ch.name : `CH ${ch.channelId}`}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-mono">{ch.channelId}</span>
+                      </div>
                     </th>
                   ))}
                 </tr>
               </thead>
+
               <tbody>
-                {activeReceivers.map((receiver, rowIdx) => {
+                {allReceivers.length === 0 && (
+                  <tr>
+                    <td colSpan={visibleChannels.length + 1} className="text-center py-10 text-xs text-slate-400">
+                      No receiver devices found. Add direct-mode contacts with IP credentials.
+                    </td>
+                  </tr>
+                )}
+
+                {allReceivers.map((receiver, rowIdx) => {
+                  const noAuth = receiver.status === "no-auth";
                   const channelMap: Record<number, ChannelInfo> = {};
-                  receiver.channels.forEach((ch) => { channelMap[ch.channelId] = ch; });
+                  receiver.channels.forEach(ch => { channelMap[ch.channelId] = ch; });
                   const isEven = rowIdx % 2 === 0;
+
+                  const rowBg = noAuth
+                    ? "bg-slate-50/80 dark:bg-slate-800/40"
+                    : isEven
+                      ? "bg-white dark:bg-slate-900"
+                      : "bg-slate-50/40 dark:bg-slate-800/30";
 
                   return (
                     <tr
                       key={receiver.speakerId}
-                      className={`${isEven ? "bg-white dark:bg-slate-800" : "bg-slate-50/50 dark:bg-slate-800/50"} hover:bg-orange-50/30 dark:hover:bg-orange-900/10 transition-colors`}
+                      className={`${rowBg} ${noAuth ? "opacity-50" : "hover:bg-orange-50/20 dark:hover:bg-orange-900/10"} transition-colors`}
+                      style={{ height: ROW_H }}
                     >
                       {/* Sticky receiver label */}
-                      <td className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-4 py-3 min-w-[200px] ${isEven ? "bg-white dark:bg-slate-800" : "bg-slate-50/80 dark:bg-slate-800/80"}`}>
-                        <div className="flex items-center gap-2">
-                          {receiver.status === "ok" ? (
-                            <Wifi className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                          ) : receiver.status === "offline" ? (
-                            <WifiOff className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                          ) : receiver.status === "no-data" ? (
-                            <Info className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                      <td
+                        className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
+                        style={{ width: STICKY_W, minWidth: STICKY_W, height: ROW_H }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {noAuth ? (
+                            <Lock className="w-3 h-3 text-slate-300 dark:text-slate-600 flex-shrink-0" />
                           ) : (
-                            <AlertTriangle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[receiver.status]}`} />
                           )}
                           <div className="min-w-0">
-                            <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{receiver.label}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">{receiver.ipAddress}</div>
-                            <div className="text-[10px] text-slate-400 truncate">{receiver.contactName}</div>
+                            <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate leading-none">
+                              {receiver.label}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono truncate mt-0.5 leading-none">
+                              {receiver.ipAddress}
+                            </div>
                           </div>
+                          {!noAuth && receiver.status !== "ok" && (
+                            <span className="ml-auto flex-shrink-0 text-[8px] font-bold uppercase tracking-wide text-slate-400">
+                              {receiver.status === "offline" ? "×" : "?"}
+                            </span>
+                          )}
                         </div>
-                        {(receiver.status === "offline" || receiver.status === "no-data") && (
-                          <div className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
-                            receiver.status === "offline"
-                              ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                              : "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
-                          }`}>
-                            {receiver.status === "offline" ? "Offline" : "No Data"}
-                          </div>
-                        )}
                       </td>
 
                       {/* Channel cells */}
-                      {visibleChannels.map((ch) => {
+                      {visibleChannels.map(ch => {
                         const cell = channelMap[ch.channelId];
-                        const isActive = cell?.active === true;
+                        const active = cell?.active === true;
                         const hasData = receiver.status === "ok";
 
                         return (
                           <td
                             key={ch.channelId}
-                            className="border-r border-b border-slate-200 dark:border-slate-700 text-center px-1 py-2.5 min-w-[80px]"
+                            className="border-r border-b border-slate-200 dark:border-slate-700 text-center p-0"
+                            style={{ width: COL_W, minWidth: COL_W, maxWidth: COL_W, height: ROW_H }}
+                            title={active && cell?.name ? `${cell.name} · ${cell.address || ""}` : undefined}
                           >
-                            {!hasData ? (
-                              <span className="inline-block w-4 h-4 rounded bg-slate-100 dark:bg-slate-700" />
-                            ) : isActive ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shadow-sm">
-                                  <CheckCircle2 className="w-3 h-3 text-white" />
-                                </div>
-                                {cell?.name && cell.name !== `CH ${ch.channelId}` && cell.name !== `Channel ${ch.channelId}` && (
-                                  <div className="text-[9px] text-green-600 dark:text-green-400 max-w-[72px] truncate" title={cell.name}>
-                                    {cell.name}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="inline-block w-4 h-4 rounded-full border-2 border-slate-200 dark:border-slate-600" />
-                            )}
+                            <div className="flex items-center justify-center h-full">
+                              {noAuth ? (
+                                <span className="w-3.5 h-3.5 rounded-sm bg-slate-100 dark:bg-slate-700/50" />
+                              ) : !hasData ? (
+                                <span className="w-3.5 h-3.5 rounded-sm bg-slate-100 dark:bg-slate-700" />
+                              ) : active ? (
+                                <span className="w-3.5 h-3.5 rounded-sm bg-teal-500 shadow-sm shadow-teal-200 dark:shadow-teal-900" />
+                              ) : (
+                                <span className="w-3.5 h-3.5 rounded-sm border border-slate-200 dark:border-slate-700" />
+                              )}
+                            </div>
                           </td>
                         );
                       })}
@@ -354,29 +351,30 @@ export default function MultiManagement() {
             </table>
           </div>
 
-          {/* Legend */}
-          <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-6 flex-wrap text-xs text-slate-500">
-            <span className="font-semibold text-slate-400 uppercase tracking-wide text-[10px]">Legend</span>
+          {/* Status bar / legend */}
+          <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center gap-5 flex-wrap text-[10px] text-slate-500">
+            <span className="font-semibold uppercase tracking-wide text-slate-400 text-[9px]">Legend</span>
             <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
-                <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-              </span>
-              Subscribed to channel
+              <span className="w-3 h-3 rounded-sm bg-teal-500" />Subscribed
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full border-2 border-slate-300" />
-              Not subscribed
+              <span className="w-3 h-3 rounded-sm border border-slate-200 dark:border-slate-600" />Not subscribed
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded bg-slate-100 dark:bg-slate-700" />
-              Offline / no data
+              <span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700" />Offline / no data
             </span>
-            <span className="flex items-center gap-1.5">
-              <Wifi className="w-3.5 h-3.5 text-green-500" /> Online
-            </span>
-            <span className="flex items-center gap-1.5">
-              <WifiOff className="w-3.5 h-3.5 text-red-400" /> Offline
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              {(["ok","offline","no-data","no-auth"] as ReceiverStatus[]).map(s => {
+                const count = allReceivers.filter(r => r.status === s).length;
+                if (!count) return null;
+                return (
+                  <span key={s} className="flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[s]}`} />
+                    {count} {STATUS_LABEL[s]}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

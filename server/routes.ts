@@ -1206,58 +1206,59 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
             });
             continue;
           }
-          try {
-            const data = await makeRequest(
-              speaker.ipAddress,
-              "/api/v2/multicast/get_list",
-              speaker.username,
-              speaker.password
-            );
-            const rawChannels = data?.response;
+          // Try multiple possible multicast API paths in order
+          const MULTICAST_PATHS = [
+            "/api/v2/multicast/get_list",
+            "/api/v2/multicast/list",
+            "/api/v2/multicast",
+            "/api/v2/multicast/config",
+            "/api/v2/network/multicast",
+          ];
+
+          function parseMulticastResponse(raw: any): any[] {
             const channels: any[] = [];
-            if (Array.isArray(rawChannels)) {
-              rawChannels.forEach((ch: any, idx: number) => {
-                channels.push({
-                  channelId: ch.channel ?? ch.id ?? idx + 1,
-                  name: ch.name ?? ch.label ?? `Channel ${idx + 1}`,
-                  address: ch.address ?? ch.multicast_address ?? "",
-                  port: ch.port ?? 4001,
-                  active: !!(ch.enabled ?? ch.active ?? ch.subscribed ?? false),
-                });
+            const arr = Array.isArray(raw)
+              ? raw
+              : (raw && typeof raw === "object" ? Object.values(raw) : []);
+            arr.forEach((ch: any, idx: number) => {
+              if (typeof ch !== "object" || !ch) return;
+              channels.push({
+                channelId: ch.channel ?? ch.id ?? ch.index ?? idx + 1,
+                name: ch.name ?? ch.label ?? ch.channel_name ?? `CH ${idx + 1}`,
+                address: ch.address ?? ch.multicast_address ?? ch.ip ?? "",
+                port: ch.port ?? ch.multicast_port ?? 4001,
+                active: !!(ch.enabled ?? ch.active ?? ch.subscribed ?? ch.listening ?? false),
               });
-            } else if (rawChannels && typeof rawChannels === "object") {
-              const keys = Object.keys(rawChannels);
-              keys.forEach((k, idx) => {
-                const ch = rawChannels[k];
-                channels.push({
-                  channelId: idx + 1,
-                  name: ch.name ?? ch.label ?? `Channel ${idx + 1}`,
-                  address: ch.address ?? "",
-                  port: ch.port ?? 4001,
-                  active: !!(ch.enabled ?? ch.active ?? false),
-                });
-              });
-            }
-            results.push({
-              speakerId: speaker.id,
-              contactId: contact.id,
-              contactName: contact.name,
-              label: speaker.label,
-              ipAddress: speaker.ipAddress,
-              status: channels.length > 0 ? "ok" : "no-data",
-              channels,
             });
-          } catch {
-            results.push({
-              speakerId: speaker.id,
-              contactId: contact.id,
-              contactName: contact.name,
-              label: speaker.label,
-              ipAddress: speaker.ipAddress,
-              status: "offline",
-              channels: [],
-            });
+            return channels;
           }
+
+          let deviceStatus: "ok" | "offline" | "no-data" = "offline";
+          let deviceChannels: any[] = [];
+
+          for (const apiPath of MULTICAST_PATHS) {
+            try {
+              const data = await makeRequest(speaker.ipAddress, apiPath, speaker.username, speaker.password);
+              if (data.status === 200 || data.status === 0) {
+                const parsed = parseMulticastResponse(data.response);
+                deviceChannels = parsed;
+                deviceStatus = parsed.length > 0 ? "ok" : "no-data";
+                break;
+              }
+            } catch {
+              // continue to next path
+            }
+          }
+
+          results.push({
+            speakerId: speaker.id,
+            contactId: contact.id,
+            contactName: contact.name,
+            label: speaker.label,
+            ipAddress: speaker.ipAddress,
+            status: deviceStatus,
+            channels: deviceChannels,
+          });
         }
       }
 
