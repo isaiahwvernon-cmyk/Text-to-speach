@@ -3,20 +3,31 @@ import { apiFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, Loader2, Monitor, Radio, Lock,
-  Upload, CheckCircle2, XCircle, AlertCircle
+  Upload, CheckCircle2, XCircle, AlertCircle, Layers
 } from "lucide-react";
 
 const NUM_CHANNELS = 20;
 const COL_W = 34;
-const ROW_H = 36;
+const ROW_H = 50;
 const HEADER_H = 108;
-const STICKY_W = 164;
+const STICKY_W = 192;
+
+// Zone accent colors (cycling) — teal, indigo, violet, amber, rose
+const ZONE_COLORS = [
+  { border: "border-l-teal-500", bg: "bg-teal-50/40 dark:bg-teal-900/10", text: "text-teal-700 dark:text-teal-300", dot: "bg-teal-500" },
+  { border: "border-l-indigo-400", bg: "bg-indigo-50/40 dark:bg-indigo-900/10", text: "text-indigo-700 dark:text-indigo-300", dot: "bg-indigo-400" },
+  { border: "border-l-violet-400", bg: "bg-violet-50/40 dark:bg-violet-900/10", text: "text-violet-700 dark:text-violet-300", dot: "bg-violet-400" },
+  { border: "border-l-amber-400", bg: "bg-amber-50/40 dark:bg-amber-900/10", text: "text-amber-700 dark:text-amber-300", dot: "bg-amber-400" },
+  { border: "border-l-rose-400", bg: "bg-rose-50/40 dark:bg-rose-900/10", text: "text-rose-700 dark:text-rose-300", dot: "bg-rose-400" },
+];
 
 type ReceiverRow = {
   speakerId: string;
   contactId: string;
   contactName: string;
+  roomName: string;
   label: string;
+  terminalName: string | null;
   ipAddress: string;
   hasAuth: boolean;
   syncFailed?: boolean;
@@ -40,6 +51,20 @@ type PushEvent =
 function isMobilePhone() {
   if (typeof window === "undefined") return false;
   return window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+}
+
+// Group receivers by contactId preserving insertion order
+function groupByContact(receivers: ReceiverRow[]): { contactId: string; contactName: string; speakers: ReceiverRow[] }[] {
+  const order: string[] = [];
+  const map: Record<string, { contactId: string; contactName: string; speakers: ReceiverRow[] }> = {};
+  for (const r of receivers) {
+    if (!map[r.contactId]) {
+      map[r.contactId] = { contactId: r.contactId, contactName: r.contactName, speakers: [] };
+      order.push(r.contactId);
+    }
+    map[r.contactId].speakers.push(r);
+  }
+  return order.map(id => map[id]);
 }
 
 export default function MultiManagement() {
@@ -87,7 +112,9 @@ export default function MultiManagement() {
         speakerId: r.speakerId,
         contactId: r.contactId,
         contactName: r.contactName,
+        roomName: r.contactName,
         label: r.label,
+        terminalName: r.terminalName ?? null,
         ipAddress: r.ipAddress,
         hasAuth: r.status !== "no-auth",
         syncFailed: r.status === "offline",
@@ -191,6 +218,15 @@ export default function MultiManagement() {
       )
     : allChannels;
 
+  const zoneGroups = groupByContact(credentialedReceivers);
+  const noAuthGroups = groupByContact(noAuthReceivers);
+
+  // Assign zone color by contactId — stable mapping
+  const zoneColorMap: Record<string, typeof ZONE_COLORS[number]> = {};
+  [...zoneGroups, ...noAuthGroups].forEach((g, idx) => {
+    zoneColorMap[g.contactId] = ZONE_COLORS[idx % ZONE_COLORS.length];
+  });
+
   return (
     <div className="relative select-none">
 
@@ -286,7 +322,7 @@ export default function MultiManagement() {
           <div className="font-bold text-slate-900 dark:text-white text-sm">Multicast Channel Matrix</div>
           <div className="text-[11px] text-slate-400 mt-0.5">
             {syncedAt
-              ? `Last synced ${new Date(syncedAt).toLocaleTimeString()} · ${credentialedReceivers.length} receiver${credentialedReceivers.length !== 1 ? "s" : ""} · click cells to edit, then Push`
+              ? `Last synced ${new Date(syncedAt).toLocaleTimeString()} · ${credentialedReceivers.length} receiver${credentialedReceivers.length !== 1 ? "s" : ""} in ${zoneGroups.length} zone${zoneGroups.length !== 1 ? "s" : ""} · click cells to edit, then Push`
               : "Sync to read current configuration from devices, or edit manually and Push"}
           </div>
         </div>
@@ -326,7 +362,7 @@ export default function MultiManagement() {
           Sync
         </button>
 
-        <button onClick={handlePush} disabled={pushing || syncing || receivers.filter(r => r.hasAuth).length === 0}
+        <button onClick={handlePush} disabled={pushing || syncing || credentialedReceivers.length === 0}
           data-testid="button-multicast-push"
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#FF8200] text-white text-xs font-bold hover:bg-[#e07200] disabled:opacity-50 transition-colors shadow shadow-orange-100">
           <Upload className="w-3.5 h-3.5" />
@@ -360,23 +396,23 @@ export default function MultiManagement() {
       {synced && !syncing && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
 
-          {/* PG label bar */}
+          {/* PG status bar */}
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
             <Radio className="w-3 h-3 text-[#FF8200] flex-shrink-0" />
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
               {selectedPg?.name || "PG Gateway"}
             </span>
-            {selectedPg?.address && (
+            {(selectedPg as any)?.address && (
               <span className="text-[10px] text-slate-400 font-mono">{(selectedPg as any).address}</span>
             )}
             {selectedPgData && (
-              <span className="ml-2 text-[10px]">
+              <span className="ml-1 text-[10px]">
                 {selectedPgData.status === "ok" ? (
                   <span className="text-teal-600 dark:text-teal-400 font-semibold">
                     {selectedPgData.activeChannels.length} channel{selectedPgData.activeChannels.length !== 1 ? "s" : ""} active
                   </span>
                 ) : selectedPgData.status === "no-auth" ? (
-                  <span className="text-amber-500">Add PG credentials in Settings to sync</span>
+                  <span className="text-amber-500">Add credentials in Settings → IT → Paging Gateways</span>
                 ) : (
                   <span className="text-slate-400">Could not read PG config</span>
                 )}
@@ -386,12 +422,6 @@ export default function MultiManagement() {
               {visibleChannels.length} ch · {credentialedReceivers.length} receiver{credentialedReceivers.length !== 1 ? "s" : ""}
             </span>
           </div>
-
-          {credentialedReceivers.length === 0 && !selectedPgData && (
-            <div className="py-12 text-center text-xs text-slate-400">
-              No direct-mode contacts with credentials found. Add speakers with username and password in Contacts.
-            </div>
-          )}
 
           <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 290px)", minHeight: 120 }}>
             <table className="border-collapse" style={{ tableLayout: "fixed" }}>
@@ -408,7 +438,7 @@ export default function MultiManagement() {
                     style={{ height: HEADER_H, width: STICKY_W }}
                   >
                     <span className="block px-3 text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-left">
-                      Receiver
+                      Zone / Speaker
                     </span>
                   </th>
 
@@ -419,9 +449,7 @@ export default function MultiManagement() {
                       <th
                         key={ch}
                         className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 ${
-                          pgActive
-                            ? "bg-teal-50 dark:bg-teal-900/20"
-                            : "bg-slate-50 dark:bg-slate-800"
+                          pgActive ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-800"
                         }`}
                         style={{ height: HEADER_H, width: COL_W }}
                       >
@@ -433,9 +461,7 @@ export default function MultiManagement() {
                             CH {ch}
                           </span>
                           <span className={`text-[9px] font-mono ${pgActive ? "text-teal-500" : "text-slate-400"}`}>{ch}</span>
-                          {pgActive && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mb-0.5" />
-                          )}
+                          {pgActive && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mb-0.5" />}
                         </div>
                       </th>
                     );
@@ -444,46 +470,43 @@ export default function MultiManagement() {
               </thead>
 
               <tbody>
-                {/* PG row — shown when we have PG data */}
+                {/* PG row */}
                 {selectedPgData && (
-                  <tr style={{ height: ROW_H }} className="bg-teal-50/60 dark:bg-teal-900/10">
+                  <tr style={{ height: ROW_H }} className="bg-slate-50/80 dark:bg-slate-800/60">
                     <td
-                      className="sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 bg-teal-50/80 dark:bg-teal-900/15"
+                      className="sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-0 bg-slate-50/90 dark:bg-slate-800/70 border-l-4 border-l-[#FF8200]"
                       style={{ width: STICKY_W, height: ROW_H }}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Radio className="w-3 h-3 text-[#FF8200] flex-shrink-0" />
+                      <div className="px-2.5 flex items-center gap-2 min-w-0 h-full">
+                        <div className="w-5 h-5 rounded-md bg-[#FF8200]/10 flex items-center justify-center flex-shrink-0">
+                          <Radio className="w-3 h-3 text-[#FF8200]" />
+                        </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate leading-none">
+                          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate leading-tight">
                             {selectedPgData.pgName}
                           </div>
-                          <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
+                          <div className="text-[9px] text-slate-400 font-mono leading-tight truncate">
                             {selectedPgData.address}
-                            {selectedPgData.status !== "ok" && (
-                              <span className="ml-1 text-amber-500">
-                                {selectedPgData.status === "no-auth" ? "· no credentials" : "· could not read"}
-                              </span>
-                            )}
                           </div>
+                          {selectedPgData.status !== "ok" && (
+                            <div className="text-[9px] text-amber-500 leading-tight">
+                              {selectedPgData.status === "no-auth" ? "no credentials" : "could not read config"}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
                     {visibleChannels.map(ch => {
                       const active = selectedPgData.activeChannels.includes(ch);
                       return (
-                        <td
-                          key={ch}
-                          className="border-r border-b border-slate-200 dark:border-slate-700 p-0"
-                          style={{ width: COL_W, height: ROW_H }}
-                        >
+                        <td key={ch} className="border-r border-b border-slate-200 dark:border-slate-700 p-0" style={{ width: COL_W, height: ROW_H }}>
                           <div className="flex items-center justify-center h-full">
-                            {selectedPgData.status !== "ok" ? (
-                              <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700/60" />
-                            ) : active ? (
-                              <span className="w-4 h-4 rounded-sm bg-[#FF8200] shadow-sm" title={`PG sending on CH ${ch}`} />
-                            ) : (
-                              <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700" />
-                            )}
+                            {selectedPgData.status !== "ok"
+                              ? <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700/60" />
+                              : active
+                              ? <span className="w-4 h-4 rounded-sm bg-[#FF8200] shadow-sm" title={`PG sending on CH ${ch}`} />
+                              : <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700" />
+                            }
                           </div>
                         </td>
                       );
@@ -491,93 +514,138 @@ export default function MultiManagement() {
                   </tr>
                 )}
 
-                {/* Receiver rows */}
-                {credentialedReceivers.map((receiver, rowIdx) => {
-                  const subscribed = new Set(matrix[receiver.speakerId] ?? []);
-                  const isEven = rowIdx % 2 === 0;
-                  const rowBg = isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/40";
-
-                  return (
-                    <tr key={receiver.speakerId} className={rowBg} style={{ height: ROW_H }}>
+                {/* Credentialed zones */}
+                {zoneGroups.map((group) => {
+                  const zc = zoneColorMap[group.contactId];
+                  return [
+                    /* Zone header row */
+                    <tr key={`zone-${group.contactId}`} style={{ height: 26 }}>
                       <td
-                        className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
-                        style={{ width: STICKY_W, height: ROW_H }}
+                        colSpan={visibleChannels.length + 1}
+                        className="sticky left-0 border-b border-t border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/90 px-3 py-0"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {receiver.syncFailed && (
-                            <AlertCircle className="w-3 h-3 text-amber-400 flex-shrink-0" title="Could not read from device — edit manually" />
-                          )}
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate leading-none">
-                              {receiver.label}
-                            </div>
-                            <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
-                              {receiver.ipAddress}
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${zc.dot}`} />
+                          <Layers className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                          <span className={`text-[10px] font-bold uppercase tracking-wide ${zc.text}`}>
+                            {group.contactName}
+                          </span>
+                          <span className="text-[9px] text-slate-400 ml-1">
+                            {group.speakers.length} speaker{group.speakers.length !== 1 ? "s" : ""}
+                          </span>
                         </div>
                       </td>
-                      {visibleChannels.map(ch => {
-                        const active = subscribed.has(ch);
-                        return (
+                    </tr>,
+
+                    /* Speaker rows */
+                    ...group.speakers.map((receiver, rowIdx) => {
+                      const subscribed = new Set(matrix[receiver.speakerId] ?? []);
+                      const isLast = rowIdx === group.speakers.length - 1;
+                      return (
+                        <tr key={receiver.speakerId} className={`${zc.bg}`} style={{ height: ROW_H }}>
                           <td
-                            key={ch}
-                            className="border-r border-b border-slate-200 dark:border-slate-700 p-0 cursor-pointer hover:bg-orange-200/70 dark:hover:bg-orange-800/40 transition-colors"
-                            style={{ width: COL_W, height: ROW_H }}
-                            onClick={() => toggleCell(receiver.speakerId, ch)}
-                            title={`${receiver.label} — CH ${ch} — click to ${active ? "unsubscribe" : "subscribe"}`}
+                            className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-0 ${zc.bg} border-l-4 ${zc.border} ${isLast ? "border-b-2" : ""}`}
+                            style={{ width: STICKY_W, height: ROW_H }}
                           >
-                            <div className="flex items-center justify-center h-full">
-                              {active ? (
-                                <span className="w-4 h-4 rounded-sm bg-teal-500 shadow-sm shadow-teal-200 dark:shadow-none block" />
-                              ) : (
-                                <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700 block" />
+                            <div className="px-2 flex items-start gap-2 min-w-0 py-1.5">
+                              {receiver.syncFailed && (
+                                <AlertCircle className="w-3 h-3 text-amber-400 flex-shrink-0 mt-1" title="Could not read from device — edit manually" />
                               )}
+                              <div className="min-w-0 flex-1">
+                                {/* Terminal name — from device */}
+                                {receiver.terminalName ? (
+                                  <div className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate leading-tight">
+                                    {receiver.terminalName}
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 truncate leading-tight italic">
+                                    {receiver.syncFailed ? "offline" : "—"}
+                                  </div>
+                                )}
+                                {/* Speaker label — from contacts */}
+                                <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate leading-tight">
+                                  {receiver.label}
+                                </div>
+                                {/* IP address */}
+                                <div className="text-[9px] text-slate-400 font-mono leading-tight truncate">
+                                  {receiver.ipAddress}
+                                </div>
+                              </div>
                             </div>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  );
+                          {visibleChannels.map(ch => {
+                            const active = subscribed.has(ch);
+                            return (
+                              <td
+                                key={ch}
+                                className={`border-r border-b border-slate-200 dark:border-slate-700 p-0 cursor-pointer hover:bg-orange-200/70 dark:hover:bg-orange-800/40 transition-colors ${isLast ? "border-b-2" : ""}`}
+                                style={{ width: COL_W, height: ROW_H }}
+                                onClick={() => toggleCell(receiver.speakerId, ch)}
+                                title={`${receiver.terminalName ?? receiver.label} — CH ${ch} — click to ${active ? "unsubscribe" : "subscribe"}`}
+                              >
+                                <div className="flex items-center justify-center h-full">
+                                  {active
+                                    ? <span className="w-4 h-4 rounded-sm bg-teal-500 shadow-sm shadow-teal-200 dark:shadow-none block" />
+                                    : <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700 block" />
+                                  }
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    }),
+                  ];
                 })}
 
-                {/* No-auth receiver rows — faded/locked */}
-                {noAuthReceivers.map((receiver, rowIdx) => {
-                  const isEven = (credentialedReceivers.length + rowIdx) % 2 === 0;
-                  const rowBg = isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/40";
-                  return (
-                    <tr key={receiver.speakerId} className={`${rowBg} opacity-40`} style={{ height: ROW_H }}>
+                {/* No-auth zones — faded */}
+                {noAuthGroups.map((group) => {
+                  const zc = zoneColorMap[group.contactId];
+                  return [
+                    <tr key={`zone-noauth-${group.contactId}`} style={{ height: 26 }}>
                       <td
-                        className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
-                        style={{ width: STICKY_W, height: ROW_H }}
+                        colSpan={visibleChannels.length + 1}
+                        className="sticky left-0 border-b border-t border-slate-200 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-800/70 px-3 py-0 opacity-50"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Lock className="w-3 h-3 text-slate-300 dark:text-slate-600 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 truncate leading-none">
-                              {receiver.label}
-                            </div>
-                            <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
-                              {receiver.ipAddress}
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <Lock className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            {group.contactName}
+                          </span>
+                          <span className="text-[9px] text-slate-400">— no credentials</span>
                         </div>
                       </td>
-                      {visibleChannels.map(ch => (
-                        <td key={ch} className="border-r border-b border-slate-200 dark:border-slate-700 p-0" style={{ width: COL_W, height: ROW_H }}>
-                          <div className="flex items-center justify-center h-full">
-                            <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700 block" />
+                    </tr>,
+                    ...group.speakers.map(receiver => (
+                      <tr key={receiver.speakerId} className="opacity-35" style={{ height: ROW_H }}>
+                        <td
+                          className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-0 bg-white dark:bg-slate-900 border-l-4 ${zc.border}`}
+                          style={{ width: STICKY_W, height: ROW_H }}
+                        >
+                          <div className="px-2 flex items-start gap-2 min-w-0 py-1.5">
+                            <Lock className="w-3 h-3 text-slate-300 dark:text-slate-600 flex-shrink-0 mt-1" />
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-bold text-slate-500 truncate leading-tight">{receiver.label}</div>
+                              <div className="text-[9px] text-slate-400 font-mono leading-tight">{receiver.ipAddress}</div>
+                            </div>
                           </div>
                         </td>
-                      ))}
-                    </tr>
-                  );
+                        {visibleChannels.map(ch => (
+                          <td key={ch} className="border-r border-b border-slate-200 dark:border-slate-700 p-0" style={{ width: COL_W, height: ROW_H }}>
+                            <div className="flex items-center justify-center h-full">
+                              <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700 block" />
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    )),
+                  ];
                 })}
 
                 {credentialedReceivers.length === 0 && !selectedPgData && (
                   <tr>
                     <td colSpan={visibleChannels.length + 1} className="text-center py-10 text-xs text-slate-400">
-                      No receiver devices or PG gateways to display. Add contacts with credentials.
+                      No receiver devices found. Add direct-mode contacts with speaker credentials.
                     </td>
                   </tr>
                 )}
@@ -588,19 +656,11 @@ export default function MultiManagement() {
           {/* Legend */}
           <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center gap-5 flex-wrap text-[10px] text-slate-500">
             <span className="font-semibold uppercase tracking-wide text-slate-400 text-[9px]">Legend</span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#FF8200]" />PG active channel
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-teal-500" />Receiver subscribed
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm border border-slate-200 dark:border-slate-600" />Not subscribed
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700" />No credentials
-            </span>
-            <span className="ml-auto text-[10px] text-slate-400">Click any receiver cell to toggle · Push to apply</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#FF8200]" />PG active channel</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-teal-500" />Receiver subscribed</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm border border-slate-200 dark:border-slate-600" />Not subscribed</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700" />No credentials</span>
+            <span className="ml-auto text-[10px] text-slate-400">Terminal name from device · label from Contacts · click to toggle · Push to apply</span>
           </div>
         </div>
       )}

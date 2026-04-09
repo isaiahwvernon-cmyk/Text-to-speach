@@ -1279,27 +1279,36 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
           let deviceStatus: "ok" | "offline" | "no-data" = "offline";
           let deviceChannels: any[] = [];
 
+          let terminalName: string | null = null;
+
           try {
-            const data = await makeRequest(
-              speaker.ipAddress,
-              "/api/v2/multicast/get_receive_channels",
-              speaker.username,
-              speaker.password
-            );
-            if (data.status === 200) {
-              // data.response is the full JSON body: { response: { active, channels }, result }
-              const inner = data.response?.response ?? data.response;
-              const rawChannels: any[] = Array.isArray(inner?.channels) ? inner.channels : [];
-              deviceChannels = rawChannels.map((ch: any, idx: number) => ({
-                channelId: ch.channel ?? idx + 1,
-                name: ch.name ?? `CH ${ch.channel ?? idx + 1}`,
-                address: ch.address ?? "",
-                port: ch.port ?? 48000,
-                active: ch.enable === true || ch.enable === "on",
-              }));
-              deviceStatus = rawChannels.length > 0 ? "ok" : "no-data";
+            const [channelResult, modelResult] = await Promise.allSettled([
+              makeRequest(speaker.ipAddress, "/api/v2/multicast/get_receive_channels", speaker.username, speaker.password),
+              makeRequest(speaker.ipAddress, "/api/v2/firmware/model", speaker.username, speaker.password),
+            ]);
+
+            if (channelResult.status === "fulfilled") {
+              const data = channelResult.value;
+              if (data.status === 200) {
+                const inner = data.response?.response ?? data.response;
+                const rawChannels: any[] = Array.isArray(inner?.channels) ? inner.channels : [];
+                deviceChannels = rawChannels.map((ch: any, idx: number) => ({
+                  channelId: ch.channel ?? idx + 1,
+                  name: ch.name ?? `CH ${ch.channel ?? idx + 1}`,
+                  address: ch.address ?? "",
+                  port: ch.port ?? 48000,
+                  active: ch.enable === true || ch.enable === "on",
+                }));
+                deviceStatus = rawChannels.length > 0 ? "ok" : "no-data";
+              } else {
+                deviceStatus = "no-data";
+              }
             } else {
-              deviceStatus = "no-data";
+              deviceStatus = "offline";
+            }
+
+            if (modelResult.status === "fulfilled") {
+              terminalName = modelResult.value?.response?.terminal_name ?? null;
             }
           } catch {
             deviceStatus = "offline";
@@ -1310,6 +1319,7 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
             contactId: contact.id,
             contactName: contact.name,
             label: speaker.label,
+            terminalName,
             ipAddress: speaker.ipAddress,
             status: deviceStatus,
             channels: deviceChannels,
