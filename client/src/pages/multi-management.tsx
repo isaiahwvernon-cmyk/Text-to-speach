@@ -461,32 +461,51 @@ export default function MultiManagement() {
                       <th
                         key={ch}
                         title={tooltip}
-                        className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 ${
+                        className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 overflow-hidden ${
                           pgActive ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-800"
                         }`}
-                        style={{ height: HEADER_H, width: COL_W }}
+                        style={{ height: HEADER_H, width: COL_W, position: "relative" }}
                       >
-                        <div className="flex flex-col items-center justify-end h-full pb-1.5 gap-0" style={{ paddingTop: 4 }}>
-                          {/* Channel name (rotated) */}
-                          {chName ? (
-                            <span
-                              className={`text-[9px] font-semibold leading-none ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-500 dark:text-slate-400"}`}
-                              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap", maxHeight: 60, overflow: "hidden", textOverflow: "ellipsis" }}
-                            >
-                              {chName.length > 10 ? chName.slice(0, 10) + "…" : chName}
+                        {/* Entire text block rotated as one unit so lines stack naturally */}
+                        <div style={{
+                          position: "absolute",
+                          top: 0, left: 0, right: 0, bottom: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "flex-end",
+                          paddingBottom: pgActive ? 14 : 8,
+                        }}>
+                          <div style={{
+                            transform: "rotate(-90deg)",
+                            transformOrigin: "center center",
+                            width: HEADER_H - 12,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-start",
+                            gap: 1,
+                            overflow: "hidden",
+                          }}>
+                            <span className={`text-[10px] font-bold leading-tight truncate w-full ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-700 dark:text-slate-200"}`}>
+                              CH {ch}
                             </span>
-                          ) : (
-                            <span style={{ height: 24 }} />
-                          )}
-                          {/* CH N label */}
-                          <span
-                            className={`text-[10px] font-bold mt-0.5 ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-600 dark:text-slate-300"}`}
-                            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap" }}
-                          >
-                            CH {ch}
-                          </span>
-                          {pgActive && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-0.5 mb-0.5" />}
+                            {chName && (
+                              <span className={`text-[9px] font-semibold leading-tight truncate w-full ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-500 dark:text-slate-400"}`}>
+                                {chName}
+                              </span>
+                            )}
+                            {chIp && (
+                              <span className="text-[8px] font-mono leading-tight truncate w-full text-slate-400 dark:text-slate-500">
+                                {chIp}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        {/* Active dot at bottom */}
+                        {pgActive && (
+                          <div style={{ position: "absolute", bottom: 4, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                          </div>
+                        )}
                       </th>
                     );
                   })}
@@ -533,25 +552,14 @@ export default function MultiManagement() {
                           className="border-r border-b border-slate-200 dark:border-slate-700 p-0"
                           style={{ width: COL_W, height: ROW_H }}
                         >
-                          {selectedPgData.status !== "ok" ? (
-                            <div className="flex items-center justify-center h-full">
-                              <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700/60" />
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center h-full gap-0.5">
-                              {/* Active indicator */}
-                              <span className={`w-3.5 h-3.5 rounded-sm flex-shrink-0 ${active ? "bg-[#FF8200] shadow-sm" : "border border-slate-200 dark:border-slate-700"}`} />
-                              {/* Multicast IP (vertical, tiny) */}
-                              {chIp && (
-                                <span
-                                  className="text-[8px] font-mono leading-none text-slate-400 dark:text-slate-500"
-                                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", maxHeight: 28, overflow: "hidden" }}
-                                >
-                                  {chIp}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center justify-center h-full">
+                            {selectedPgData.status !== "ok"
+                              ? <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700/60" />
+                              : active
+                              ? <span className="w-4 h-4 rounded-sm bg-[#FF8200] shadow-sm" />
+                              : <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700" />
+                            }
+                          </div>
                         </td>
                       );
                     })}
