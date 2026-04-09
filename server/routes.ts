@@ -1206,48 +1206,35 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
             });
             continue;
           }
-          // Try multiple possible multicast API paths in order
-          const MULTICAST_PATHS = [
-            "/api/v2/multicast/get_list",
-            "/api/v2/multicast/list",
-            "/api/v2/multicast",
-            "/api/v2/multicast/config",
-            "/api/v2/network/multicast",
-          ];
-
-          function parseMulticastResponse(raw: any): any[] {
-            const channels: any[] = [];
-            const arr = Array.isArray(raw)
-              ? raw
-              : (raw && typeof raw === "object" ? Object.values(raw) : []);
-            arr.forEach((ch: any, idx: number) => {
-              if (typeof ch !== "object" || !ch) return;
-              channels.push({
-                channelId: ch.channel ?? ch.id ?? ch.index ?? idx + 1,
-                name: ch.name ?? ch.label ?? ch.channel_name ?? `CH ${idx + 1}`,
-                address: ch.address ?? ch.multicast_address ?? ch.ip ?? "",
-                port: ch.port ?? ch.multicast_port ?? 4001,
-                active: !!(ch.enabled ?? ch.active ?? ch.subscribed ?? ch.listening ?? false),
-              });
-            });
-            return channels;
-          }
-
+          // Official TOA IP-A1 API v2.3+: GET /api/v2/multicast/get_receive_channels
+          // Response: { "response": { "active": bool, "channels": [{ channel, enable, address, name, port }] }, "result": true }
           let deviceStatus: "ok" | "offline" | "no-data" = "offline";
           let deviceChannels: any[] = [];
 
-          for (const apiPath of MULTICAST_PATHS) {
-            try {
-              const data = await makeRequest(speaker.ipAddress, apiPath, speaker.username, speaker.password);
-              if (data.status === 200 || data.status === 0) {
-                const parsed = parseMulticastResponse(data.response);
-                deviceChannels = parsed;
-                deviceStatus = parsed.length > 0 ? "ok" : "no-data";
-                break;
-              }
-            } catch {
-              // continue to next path
+          try {
+            const data = await makeRequest(
+              speaker.ipAddress,
+              "/api/v2/multicast/get_receive_channels",
+              speaker.username,
+              speaker.password
+            );
+            if (data.status === 200) {
+              // data.response is the full JSON body: { response: { active, channels }, result }
+              const inner = data.response?.response ?? data.response;
+              const rawChannels: any[] = Array.isArray(inner?.channels) ? inner.channels : [];
+              deviceChannels = rawChannels.map((ch: any, idx: number) => ({
+                channelId: ch.channel ?? idx + 1,
+                name: ch.name ?? `CH ${ch.channel ?? idx + 1}`,
+                address: ch.address ?? "",
+                port: ch.port ?? 48000,
+                active: ch.enable === true || ch.enable === "on",
+              }));
+              deviceStatus = rawChannels.length > 0 ? "ok" : "no-data";
+            } else {
+              deviceStatus = "no-data";
             }
+          } catch {
+            deviceStatus = "offline";
           }
 
           results.push({
@@ -1299,13 +1286,6 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
 
       send({ type: "start", total: devices.length });
 
-      const PUSH_PATHS = [
-        (ch: number, en: number) => `/api/v2/multicast/set?channel=${ch}&enabled=${en}`,
-        (ch: number, en: number) => `/api/v2/multicast/set?channel=${ch}&active=${en}`,
-        (ch: number, en: number) => `/api/v2/multicast/set_list?channel=${ch}&enabled=${en}`,
-        (ch: number, en: number) => `/api/v2/multicast/set_channel?channel=${ch}&enable=${en}`,
-      ];
-
       const results: { speakerId: string; label: string; success: boolean; error: string }[] = [];
 
       for (let i = 0; i < devices.length; i++) {
@@ -1317,31 +1297,31 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
         let success = false;
         let error = "";
 
-        // Try each candidate push path with channel 1 to find one that works
-        let workingPathFn: ((ch: number, en: number) => string) | null = null;
-        for (const pathFn of PUSH_PATHS) {
-          try {
-            const testEn = subscribedChannels.includes(1) ? 1 : 0;
-            const result = await makeRequest(device.ipAddress, pathFn(1, testEn), device.username, device.password);
-            if (result.status === 200 || result.status === 204 || result.status === 0) {
-              workingPathFn = pathFn;
-              break;
-            }
-          } catch { /* try next */ }
-        }
+        try {
+          // Official TOA API v2.3+: set_receive_channels?enable1=on&enable2=off&...&enable20=on
+          const params = Array.from({ length: 20 }, (_, k) => {
+            const ch = k + 1;
+            const val = subscribedChannels.includes(ch) ? "on" : "off";
+            return `enable${ch}=${val}`;
+          }).join("&");
 
-        if (workingPathFn) {
-          try {
-            for (let ch = 2; ch <= 20; ch++) {
-              const en = subscribedChannels.includes(ch) ? 1 : 0;
-              await makeRequest(device.ipAddress, workingPathFn(ch, en), device.username, device.password);
-            }
+          const result = await makeRequest(
+            device.ipAddress,
+            `/api/v2/multicast/set_receive_channels?${params}`,
+            device.username,
+            device.password
+          );
+
+          if (result.status === 200 && result.response?.result === true) {
             success = true;
-          } catch (e: any) {
-            error = e.message ?? "Push failed mid-way";
+          } else if (result.status === 200) {
+            // Some firmware returns 200 without explicit result field
+            success = true;
+          } else {
+            error = `Device returned HTTP ${result.status}`;
           }
-        } else {
-          error = "Device unreachable or no supported push API found";
+        } catch (e: any) {
+          error = e.message ?? "Device unreachable";
         }
 
         results.push({ speakerId: device.id, label: device.label, success, error });
