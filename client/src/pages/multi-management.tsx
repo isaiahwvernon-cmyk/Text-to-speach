@@ -464,38 +464,47 @@ export default function MultiManagement() {
                         className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 ${
                           pgActive ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-800"
                         }`}
-                        style={{ height: HEADER_H, width: COL_W, position: "relative", overflow: "visible" }}
+                        style={{ height: HEADER_H, width: COL_W, position: "relative", overflow: "hidden" }}
                       >
-                        {/* Rotated text block — must NOT have overflow:hidden on th or it clips pre-rotation */}
+                        {/*
+                          writing-mode: vertical-rl makes text flow top→bottom and new "paragraphs"
+                          (block children) stack right→left. rotate(-180deg) flips so reading is
+                          bottom→top (tilt head left) and columns flow left→right.
+                          Each block child is one column — entirely within the cell, no overflow needed.
+                        */}
                         <div style={{
                           position: "absolute",
-                          top: "50%",
-                          left: "50%",
-                          transform: "translate(-50%, -50%) rotate(-90deg)",
-                          width: HEADER_H - 12,
+                          top: 0,
+                          bottom: pgActive ? 14 : 6,
+                          left: 0,
+                          right: 0,
+                          writingMode: "vertical-rl",
+                          transform: "rotate(-180deg)",
                           display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-start",
-                          gap: 2,
-                          whiteSpace: "nowrap",
+                          flexDirection: "column",    // block axis in vertical-rl = creates side-by-side columns
+                          alignItems: "flex-start",   // inline axis = push text to top pre-rotation = visual bottom after rotate
+                          justifyContent: "flex-start", // block axis = first column at right pre-rotation = left (reading start) after rotate
+                          gap: 5,
+                          paddingRight: 4,
+                          paddingBottom: 4,
+                          overflow: "hidden",
                         }}>
-                          <span className={`text-[11px] font-bold leading-tight ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-100"}`}>
+                          <span className={`text-[11px] font-bold leading-none whitespace-nowrap ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-100"}`}>
                             CH {ch}
                           </span>
                           {chName && (
-                            <span className={`text-[11px] font-medium leading-tight ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-600 dark:text-slate-300"}`}>
+                            <span className={`text-[11px] font-medium leading-none whitespace-nowrap ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-500 dark:text-slate-400"}`}>
                               {chName}
                             </span>
                           )}
                           {chIp && (
-                            <span className="text-[10px] font-mono leading-tight text-slate-400 dark:text-slate-500">
+                            <span className="text-[10px] font-mono leading-none whitespace-nowrap text-slate-400 dark:text-slate-500">
                               {chIp}
                             </span>
                           )}
                         </div>
-                        {/* Active dot at bottom */}
                         {pgActive && (
-                          <div style={{ position: "absolute", bottom: 5, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+                          <div style={{ position: "absolute", bottom: 4, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
                             <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
                           </div>
                         )}
