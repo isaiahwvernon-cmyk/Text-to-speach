@@ -280,23 +280,36 @@ async function downloadConfigFile(ipAddress: string, username: string, password:
   });
 }
 
-// Parse conv_sip_enableN fields from PG config file (JSON or raw text)
-function parsePgActiveChannels(data: string): number[] {
+// Parse PG config file: active channels, channel names, and multicast IPs
+function parsePgChannelData(data: string): { channelId: number; name: string; multicastIp: string; active: boolean }[] {
   let config: any = {};
   try { config = JSON.parse(data); } catch { /* use regex fallback */ }
 
-  const active: number[] = [];
-  for (let i = 1; i <= 20; i++) {
-    const jsonVal = config[`conv_sip_enable${i}`];
-    if (jsonVal === 1 || jsonVal === "1" || jsonVal === true || jsonVal === "on") {
-      active.push(i);
-    } else if (jsonVal === undefined) {
-      // Fallback: regex on raw string
-      const pat = new RegExp(`"?conv_sip_enable${i}"?\\s*[=:]\\s*"?1"?`);
-      if (pat.test(data)) active.push(i);
-    }
+  function strVal(key: string, fallbackPat: RegExp): string {
+    const v = config[key];
+    if (v !== undefined && v !== null) return String(v);
+    const m = data.match(fallbackPat);
+    return m ? m[1] : "";
   }
-  return active;
+
+  return Array.from({ length: 20 }, (_, idx) => {
+    const i = idx + 1;
+
+    // Active state (conv_sip_enableN: 1 / 0)
+    const enableVal = config[`conv_sip_enable${i}`];
+    let active = enableVal === 1 || enableVal === "1" || enableVal === true || enableVal === "on";
+    if (!active && enableVal === undefined) {
+      active = new RegExp(`"?conv_sip_enable${i}"?\\s*[=:]\\s*"?1"?`).test(data);
+    }
+
+    // Channel name (multi_send_nameN)
+    const name = strVal(`multi_send_name${i}`, new RegExp(`"?multi_send_name${i}"?\\s*[=:]\\s*"([^"]*)"`));
+
+    // Multicast IP (multi_send_ipN)
+    const multicastIp = strVal(`multi_send_ip${i}`, new RegExp(`"?multi_send_ip${i}"?\\s*[=:]\\s*"([^"]*)"`));
+
+    return { channelId: i, name, multicastIp, active };
+  });
 }
 
 export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: string, _port?: number): Promise<Server> {
@@ -1328,22 +1341,24 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
       }
 
       // ── Fetch PG config data ──────────────────────────────────────────────────
-      type PgDataEntry = { pgId: string; pgName: string; address: string; activeChannels: number[]; status: "ok" | "offline" | "no-data" | "no-auth" };
+      type PgChannel = { channelId: number; name: string; multicastIp: string; active: boolean };
+      type PgDataEntry = { pgId: string; pgName: string; address: string; channels: PgChannel[]; activeChannels: number[]; status: "ok" | "offline" | "no-data" | "no-auth" };
       const pgData: PgDataEntry[] = [];
       for (const pg of settings.pgs ?? []) {
         if (!pg.address) continue;
         const pgUsername = (pg as any).username ?? "";
         const pgPassword = (pg as any).password ?? "";
         if (!pgUsername || !pgPassword) {
-          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels: [], status: "no-auth" });
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, channels: [], activeChannels: [], status: "no-auth" });
           continue;
         }
         try {
           const cfgResult = await downloadConfigFile(pg.address, pgUsername, pgPassword);
-          const activeChannels = parsePgActiveChannels(cfgResult.data);
-          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels, status: "ok" });
+          const channels = parsePgChannelData(cfgResult.data);
+          const activeChannels = channels.filter(c => c.active).map(c => c.channelId);
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, channels, activeChannels, status: "ok" });
         } catch {
-          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels: [], status: "offline" });
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, channels: [], activeChannels: [], status: "offline" });
         }
       }
 
