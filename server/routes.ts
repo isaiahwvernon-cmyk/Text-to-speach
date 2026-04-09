@@ -1272,5 +1272,88 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
     }
   });
 
+  // ─── Multi-Management: push matrix to receivers (SSE) ─────────────────────
+  app.post("/api/multi-management/push", requireAuth, requireRole("it", "admin"), async (req, res) => {
+    const matrix: Record<string, number[]> = req.body?.matrix ?? {};
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const send = (data: object) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const contacts = readRoomsConfig();
+      const directContacts = contacts.filter((c: any) => c.mode === "direct");
+      const devices: any[] = [];
+      for (const contact of directContacts) {
+        for (const speaker of (contact.speakers ?? [])) {
+          if (speaker.username?.trim() && speaker.password?.trim()) {
+            devices.push({ ...speaker, contactId: contact.id, contactName: contact.name });
+          }
+        }
+      }
+
+      send({ type: "start", total: devices.length });
+
+      const PUSH_PATHS = [
+        (ch: number, en: number) => `/api/v2/multicast/set?channel=${ch}&enabled=${en}`,
+        (ch: number, en: number) => `/api/v2/multicast/set?channel=${ch}&active=${en}`,
+        (ch: number, en: number) => `/api/v2/multicast/set_list?channel=${ch}&enabled=${en}`,
+        (ch: number, en: number) => `/api/v2/multicast/set_channel?channel=${ch}&enable=${en}`,
+      ];
+
+      const results: { speakerId: string; label: string; success: boolean; error: string }[] = [];
+
+      for (let i = 0; i < devices.length; i++) {
+        const device = devices[i];
+        const subscribedChannels: number[] = matrix[device.id] ?? [];
+
+        send({ type: "progress", index: i, total: devices.length, label: device.label, ip: device.ipAddress });
+
+        let success = false;
+        let error = "";
+
+        // Try each candidate push path with channel 1 to find one that works
+        let workingPathFn: ((ch: number, en: number) => string) | null = null;
+        for (const pathFn of PUSH_PATHS) {
+          try {
+            const testEn = subscribedChannels.includes(1) ? 1 : 0;
+            const result = await makeRequest(device.ipAddress, pathFn(1, testEn), device.username, device.password);
+            if (result.status === 200 || result.status === 204 || result.status === 0) {
+              workingPathFn = pathFn;
+              break;
+            }
+          } catch { /* try next */ }
+        }
+
+        if (workingPathFn) {
+          try {
+            for (let ch = 2; ch <= 20; ch++) {
+              const en = subscribedChannels.includes(ch) ? 1 : 0;
+              await makeRequest(device.ipAddress, workingPathFn(ch, en), device.username, device.password);
+            }
+            success = true;
+          } catch (e: any) {
+            error = e.message ?? "Push failed mid-way";
+          }
+        } else {
+          error = "Device unreachable or no supported push API found";
+        }
+
+        results.push({ speakerId: device.id, label: device.label, success, error });
+      }
+
+      send({ type: "done", results });
+    } catch (err: any) {
+      send({ type: "done", results: [] });
+    }
+
+    res.end();
+  });
+
   return httpServer;
 }
