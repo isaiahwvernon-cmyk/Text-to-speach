@@ -461,47 +461,41 @@ export default function MultiManagement() {
                       <th
                         key={ch}
                         title={tooltip}
-                        className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 overflow-hidden ${
+                        className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 ${
                           pgActive ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-800"
                         }`}
-                        style={{ height: HEADER_H, width: COL_W, position: "relative" }}
+                        style={{ height: HEADER_H, width: COL_W, position: "relative", overflow: "visible" }}
                       >
-                        {/* Entire text block rotated as one unit so lines stack naturally */}
+                        {/* Rotated text block — must NOT have overflow:hidden on th or it clips pre-rotation */}
                         <div style={{
                           position: "absolute",
-                          top: 0, left: 0, right: 0, bottom: 0,
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%) rotate(-90deg)",
+                          width: HEADER_H - 12,
                           display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: 2,
+                          whiteSpace: "nowrap",
                         }}>
-                          <div style={{
-                            transform: "rotate(-90deg)",
-                            transformOrigin: "center center",
-                            width: HEADER_H - 16,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-start",
-                            gap: 2,
-                            overflow: "hidden",
-                          }}>
-                            <span className={`text-[11px] font-bold leading-tight truncate w-full ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-100"}`}>
-                              CH {ch}
+                          <span className={`text-[11px] font-bold leading-tight ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-100"}`}>
+                            CH {ch}
+                          </span>
+                          {chName && (
+                            <span className={`text-[11px] font-medium leading-tight ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-600 dark:text-slate-300"}`}>
+                              {chName}
                             </span>
-                            {chName && (
-                              <span className={`text-[11px] font-medium leading-tight truncate w-full ${pgActive ? "text-teal-600 dark:text-teal-400" : "text-slate-600 dark:text-slate-300"}`}>
-                                {chName}
-                              </span>
-                            )}
-                            {chIp && (
-                              <span className="text-[10px] font-mono leading-tight truncate w-full text-slate-400 dark:text-slate-500">
-                                {chIp}
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {chIp && (
+                            <span className="text-[10px] font-mono leading-tight text-slate-400 dark:text-slate-500">
+                              {chIp}
+                            </span>
+                          )}
                         </div>
                         {/* Active dot at bottom */}
                         {pgActive && (
-                          <div style={{ position: "absolute", bottom: 4, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+                          <div style={{ position: "absolute", bottom: 5, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
                             <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
                           </div>
                         )}
