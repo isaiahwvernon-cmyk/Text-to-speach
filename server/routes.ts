@@ -231,6 +231,74 @@ async function makeRequest(
   });
 }
 
+// Downloads the raw config file from an IP-A1 device (returns raw string, not JSON-parsed)
+async function downloadConfigFile(ipAddress: string, username: string, password: string): Promise<{ status: number; data: string }> {
+  return new Promise((resolve, reject) => {
+    const apiPath = "/api/v2/config/download";
+    const options: http.RequestOptions = { hostname: ipAddress, port: 80, path: apiPath, method: "GET", timeout: 6000 };
+
+    const doRequest = (authHeader?: string) => {
+      const reqOptions = { ...options };
+      if (authHeader) reqOptions.headers = { Authorization: authHeader };
+
+      const req = http.request(reqOptions, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode === 401 && !authHeader) {
+            const wwwAuth = res.headers["www-authenticate"] || "";
+            if (wwwAuth.toLowerCase().startsWith("digest")) {
+              const params = parseDigestChallenge(wwwAuth);
+              const realm = params.realm || "";
+              const nonce = params.nonce || "";
+              const qop = params.qop;
+              const opaque = params.opaque;
+              const nc = "00000001";
+              const cnonce = crypto.randomBytes(8).toString("hex");
+              const digestHeader = buildDigestAuth(
+                "GET", apiPath, username, password, realm, nonce,
+                qop ? "auth" : undefined, qop ? nc : undefined, qop ? cnonce : undefined, opaque
+              );
+              doRequest(digestHeader);
+            } else {
+              const basic = Buffer.from(`${username}:${password}`).toString("base64");
+              doRequest(`Basic ${basic}`);
+            }
+          } else if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ status: res.statusCode, data });
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+      });
+      req.on("error", reject);
+      req.on("timeout", () => { req.destroy(); reject(new Error("Timed out")); });
+      req.end();
+    };
+
+    doRequest();
+  });
+}
+
+// Parse conv_sip_enableN fields from PG config file (JSON or raw text)
+function parsePgActiveChannels(data: string): number[] {
+  let config: any = {};
+  try { config = JSON.parse(data); } catch { /* use regex fallback */ }
+
+  const active: number[] = [];
+  for (let i = 1; i <= 20; i++) {
+    const jsonVal = config[`conv_sip_enable${i}`];
+    if (jsonVal === 1 || jsonVal === "1" || jsonVal === true || jsonVal === "on") {
+      active.push(i);
+    } else if (jsonVal === undefined) {
+      // Fallback: regex on raw string
+      const pat = new RegExp(`"?conv_sip_enable${i}"?\\s*[=:]\\s*"?1"?`);
+      if (pat.test(data)) active.push(i);
+    }
+  }
+  return active;
+}
+
 export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: string, _port?: number): Promise<Server> {
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1249,9 +1317,30 @@ export async function registerRoutes(httpServer: Server, app: Express, _lanIP?: 
         }
       }
 
+      // ── Fetch PG config data ──────────────────────────────────────────────────
+      type PgDataEntry = { pgId: string; pgName: string; address: string; activeChannels: number[]; status: "ok" | "offline" | "no-data" | "no-auth" };
+      const pgData: PgDataEntry[] = [];
+      for (const pg of settings.pgs ?? []) {
+        if (!pg.address) continue;
+        const pgUsername = (pg as any).username ?? "";
+        const pgPassword = (pg as any).password ?? "";
+        if (!pgUsername || !pgPassword) {
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels: [], status: "no-auth" });
+          continue;
+        }
+        try {
+          const cfgResult = await downloadConfigFile(pg.address, pgUsername, pgPassword);
+          const activeChannels = parsePgActiveChannels(cfgResult.data);
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels, status: "ok" });
+        } catch {
+          pgData.push({ pgId: pg.id, pgName: pg.name, address: pg.address, activeChannels: [], status: "offline" });
+        }
+      }
+
       res.json({
         receivers: results,
         pgs: settings.pgs ?? [],
+        pgData,
         syncedAt: new Date().toISOString(),
       });
     } catch (err: any) {

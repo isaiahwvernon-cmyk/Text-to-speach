@@ -142,6 +142,8 @@ export const pgGatewaySchema = z.object({
   address: z.string().default(""),
   port: z.number().int().min(1).max(65535).default(5060),
   defaultExtension: z.string().default(""),
+  username: z.string().default(""),
+  password: z.string().default(""),
 });
 export type PgGateway = z.infer<typeof pgGatewaySchema>;
 

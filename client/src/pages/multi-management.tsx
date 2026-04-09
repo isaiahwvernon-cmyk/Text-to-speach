@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -22,7 +22,15 @@ type ReceiverRow = {
   syncFailed?: boolean;
 };
 
-type MatrixState = Record<string, number[]>; // speakerId → subscribed channel IDs
+type PgDataEntry = {
+  pgId: string;
+  pgName: string;
+  address: string;
+  activeChannels: number[];
+  status: "ok" | "offline" | "no-data" | "no-auth";
+};
+
+type MatrixState = Record<string, number[]>;
 
 type PushEvent =
   | { type: "start"; total: number }
@@ -43,6 +51,7 @@ export default function MultiManagement() {
   const [syncing, setSyncing] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [pgs, setPgs] = useState<{ id: string; name: string; address: string }[]>([]);
+  const [pgData, setPgData] = useState<PgDataEntry[]>([]);
   const [selectedPgIdx, setSelectedPgIdx] = useState(0);
   const [activeOnly, setActiveOnly] = useState(false);
 
@@ -71,6 +80,7 @@ export default function MultiManagement() {
       }
       const data = await res.json();
       setPgs(data.pgs ?? []);
+      setPgData(data.pgData ?? []);
       setSyncedAt(data.syncedAt);
 
       const rows: ReceiverRow[] = (data.receivers as any[]).map((r: any) => ({
@@ -95,12 +105,14 @@ export default function MultiManagement() {
       setSynced(true);
 
       const dataCount = (data.receivers as any[]).filter((r: any) => r.status === "ok").length;
-      const noData = (data.receivers as any[]).filter((r: any) => r.status !== "ok").length;
+      const pgOk = (data.pgData as any[] ?? []).filter((p: any) => p.status === "ok").length;
       toast({
         title: "Sync complete",
-        description: dataCount > 0
-          ? `${dataCount} device${dataCount !== 1 ? "s" : ""} responded with channel data`
-          : `${noData} device${noData !== 1 ? "s" : ""} could not be read — you can still edit and push manually`,
+        description: [
+          dataCount > 0 ? `${dataCount} receiver${dataCount !== 1 ? "s" : ""} read` : null,
+          pgOk > 0 ? `${pgOk} PG${pgOk !== 1 ? "s" : ""} read` : null,
+          dataCount === 0 && pgOk === 0 ? "Devices not reachable — edit manually and push" : null,
+        ].filter(Boolean).join(" · "),
       });
     } catch (e: any) {
       toast({ title: "Sync error", description: e.message, variant: "destructive" });
@@ -147,7 +159,7 @@ export default function MultiManagement() {
               setPushResults(ev.results);
               setPushProgress(null);
             }
-          } catch { /* ignore parse errors */ }
+          } catch { /* ignore */ }
         }
       }
     } catch (e: any) {
@@ -169,18 +181,20 @@ export default function MultiManagement() {
   const credentialedReceivers = receivers.filter(r => r.hasAuth);
   const noAuthReceivers = receivers.filter(r => !r.hasAuth);
   const selectedPg = pgs[selectedPgIdx] ?? null;
+  const selectedPgData = pgData.find(p => p.pgId === selectedPg?.id) ?? null;
 
   const allChannels = Array.from({ length: NUM_CHANNELS }, (_, i) => i + 1);
   const visibleChannels = activeOnly
-    ? allChannels.filter(ch => credentialedReceivers.some(r => (matrix[r.speakerId] ?? []).includes(ch)))
+    ? allChannels.filter(ch =>
+        credentialedReceivers.some(r => (matrix[r.speakerId] ?? []).includes(ch)) ||
+        (selectedPgData?.activeChannels ?? []).includes(ch)
+      )
     : allChannels;
-
-  const anyEdited = synced;
 
   return (
     <div className="relative select-none">
 
-      {/* ── Mobile warning ─────────────────────────────────────────── */}
+      {/* ── Mobile warning ─────────────────────────────────────── */}
       {showMobileWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-7 text-center space-y-4">
@@ -201,7 +215,7 @@ export default function MultiManagement() {
         </div>
       )}
 
-      {/* ── Push progress overlay ───────────────────────────────────── */}
+      {/* ── Push progress overlay ──────────────────────────────── */}
       {pushing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center space-y-5">
@@ -232,7 +246,7 @@ export default function MultiManagement() {
         </div>
       )}
 
-      {/* ── Push results modal ─────────────────────────────────────── */}
+      {/* ── Push results modal ─────────────────────────────────── */}
       {pushResults && !pushing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-7 space-y-4">
@@ -266,7 +280,7 @@ export default function MultiManagement() {
         </div>
       )}
 
-      {/* ── Toolbar ────────────────────────────────────────────────── */}
+      {/* ── Toolbar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex-1 min-w-0">
           <div className="font-bold text-slate-900 dark:text-white text-sm">Multicast Channel Matrix</div>
@@ -277,6 +291,7 @@ export default function MultiManagement() {
           </div>
         </div>
 
+        {/* PG selector — show only if >1 PG */}
         {pgs.length > 1 && (
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
             {pgs.map((pg, idx) => (
@@ -319,13 +334,13 @@ export default function MultiManagement() {
         </button>
       </div>
 
-      {/* ── Pre-sync placeholder ────────────────────────────────────── */}
+      {/* ── Pre-sync placeholder ────────────────────────────────── */}
       {!synced && !syncing && (
         <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-14 text-center">
           <Radio className="w-8 h-8 text-slate-300 mx-auto mb-3" />
           <div className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">No data yet</div>
           <div className="text-xs text-slate-400 mb-5 max-w-xs mx-auto">
-            Click <strong>Sync</strong> to read channel subscriptions from all receiver devices, or you can add receivers in Contacts first.
+            Click <strong>Sync</strong> to read channel subscriptions from all receiver devices and PG gateways.
           </div>
           <button onClick={handleSync}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF8200] text-white text-xs font-bold hover:bg-[#e07200] transition-colors">
@@ -337,164 +352,247 @@ export default function MultiManagement() {
       {syncing && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-14 text-center">
           <Loader2 className="w-8 h-8 text-[#FF8200] animate-spin mx-auto mb-3" />
-          <div className="text-xs text-slate-400">Reading receiver configurations…</div>
+          <div className="text-xs text-slate-400">Reading receiver configurations and PG config files…</div>
         </div>
       )}
 
-      {/* ── Matrix ─────────────────────────────────────────────────── */}
+      {/* ── Matrix ─────────────────────────────────────────────── */}
       {synced && !syncing && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
 
-          {/* PG bar */}
+          {/* PG label bar */}
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
             <Radio className="w-3 h-3 text-[#FF8200] flex-shrink-0" />
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
               {selectedPg?.name || "PG Gateway"}
             </span>
             {selectedPg?.address && (
-              <span className="text-[10px] text-slate-400 font-mono">{selectedPg.address}</span>
+              <span className="text-[10px] text-slate-400 font-mono">{(selectedPg as any).address}</span>
+            )}
+            {selectedPgData && (
+              <span className="ml-2 text-[10px]">
+                {selectedPgData.status === "ok" ? (
+                  <span className="text-teal-600 dark:text-teal-400 font-semibold">
+                    {selectedPgData.activeChannels.length} channel{selectedPgData.activeChannels.length !== 1 ? "s" : ""} active
+                  </span>
+                ) : selectedPgData.status === "no-auth" ? (
+                  <span className="text-amber-500">Add PG credentials in Settings to sync</span>
+                ) : (
+                  <span className="text-slate-400">Could not read PG config</span>
+                )}
+              </span>
             )}
             <span className="ml-auto text-[10px] text-slate-400">
               {visibleChannels.length} ch · {credentialedReceivers.length} receiver{credentialedReceivers.length !== 1 ? "s" : ""}
             </span>
           </div>
 
-          {credentialedReceivers.length === 0 && (
+          {credentialedReceivers.length === 0 && !selectedPgData && (
             <div className="py-12 text-center text-xs text-slate-400">
               No direct-mode contacts with credentials found. Add speakers with username and password in Contacts.
             </div>
           )}
 
-          {credentialedReceivers.length > 0 && (
-            <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 290px)", minHeight: 120 }}>
-              <table className="border-collapse" style={{ tableLayout: "fixed" }}>
-                <colgroup>
-                  <col style={{ width: STICKY_W }} />
-                  {visibleChannels.map(ch => <col key={ch} style={{ width: COL_W }} />)}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th
-                      className="sticky left-0 top-0 z-30 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700"
-                      style={{ height: HEADER_H, width: STICKY_W }}
-                    >
-                      <span className="block px-3 text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-left">
-                        Receiver
-                      </span>
-                    </th>
-                    {visibleChannels.map(ch => (
+          <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 290px)", minHeight: 120 }}>
+            <table className="border-collapse" style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: STICKY_W }} />
+                {visibleChannels.map(ch => <col key={ch} style={{ width: COL_W }} />)}
+              </colgroup>
+
+              <thead>
+                <tr>
+                  {/* Corner */}
+                  <th
+                    className="sticky left-0 top-0 z-30 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700"
+                    style={{ height: HEADER_H, width: STICKY_W }}
+                  >
+                    <span className="block px-3 text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-left">
+                      Receiver
+                    </span>
+                  </th>
+
+                  {/* Rotated channel headers */}
+                  {visibleChannels.map(ch => {
+                    const pgActive = (selectedPgData?.activeChannels ?? []).includes(ch);
+                    return (
                       <th
                         key={ch}
-                        className="sticky top-0 z-20 bg-slate-50 dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 p-0"
+                        className={`sticky top-0 z-20 border-b border-r border-slate-200 dark:border-slate-700 p-0 ${
+                          pgActive
+                            ? "bg-teal-50 dark:bg-teal-900/20"
+                            : "bg-slate-50 dark:bg-slate-800"
+                        }`}
                         style={{ height: HEADER_H, width: COL_W }}
                       >
                         <div className="flex flex-col items-center justify-end h-full pb-1.5 gap-0.5">
                           <span
-                            className="text-[10px] font-semibold text-slate-600 dark:text-slate-300"
+                            className={`text-[10px] font-semibold ${pgActive ? "text-teal-700 dark:text-teal-300" : "text-slate-600 dark:text-slate-300"}`}
                             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap" }}
                           >
                             CH {ch}
                           </span>
-                          <span className="text-[9px] text-slate-400 font-mono">{ch}</span>
+                          <span className={`text-[9px] font-mono ${pgActive ? "text-teal-500" : "text-slate-400"}`}>{ch}</span>
+                          {pgActive && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mb-0.5" />
+                          )}
                         </div>
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {credentialedReceivers.map((receiver, rowIdx) => {
-                    const subscribed = new Set(matrix[receiver.speakerId] ?? []);
-                    const isEven = rowIdx % 2 === 0;
-                    const rowBg = isEven
-                      ? "bg-white dark:bg-slate-900"
-                      : "bg-slate-50/50 dark:bg-slate-800/40";
-
-                    return (
-                      <tr key={receiver.speakerId} className={`${rowBg}`} style={{ height: ROW_H }}>
-                        <td
-                          className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
-                          style={{ width: STICKY_W, height: ROW_H }}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {receiver.syncFailed && (
-                              <AlertCircle className="w-3 h-3 text-amber-400 flex-shrink-0" title="Could not read from device — showing manually configured state" />
-                            )}
-                            <div className="min-w-0">
-                              <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate leading-none">
-                                {receiver.label}
-                              </div>
-                              <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
-                                {receiver.ipAddress}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        {visibleChannels.map(ch => {
-                          const active = subscribed.has(ch);
-                          return (
-                            <td
-                              key={ch}
-                              className="border-r border-b border-slate-200 dark:border-slate-700 p-0 cursor-pointer hover:bg-orange-50/40 dark:hover:bg-orange-900/10 transition-colors"
-                              style={{ width: COL_W, height: ROW_H }}
-                              onClick={() => toggleCell(receiver.speakerId, ch)}
-                              title={`${receiver.label} — CH ${ch} — click to ${active ? "unsubscribe" : "subscribe"}`}
-                            >
-                              <div className="flex items-center justify-center h-full">
-                                {active ? (
-                                  <span className="w-4 h-4 rounded-sm bg-teal-500 shadow-sm shadow-teal-200 dark:shadow-none block" />
-                                ) : (
-                                  <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700 block" />
-                                )}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
                     );
                   })}
+                </tr>
+              </thead>
 
-                  {/* No-auth receivers — grayed out, not clickable */}
-                  {noAuthReceivers.map((receiver, rowIdx) => {
-                    const isEven = (credentialedReceivers.length + rowIdx) % 2 === 0;
-                    const rowBg = isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/40";
-                    return (
-                      <tr key={receiver.speakerId} className={`${rowBg} opacity-40`} style={{ height: ROW_H }}>
+              <tbody>
+                {/* PG row — shown when we have PG data */}
+                {selectedPgData && (
+                  <tr style={{ height: ROW_H }} className="bg-teal-50/60 dark:bg-teal-900/10">
+                    <td
+                      className="sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 bg-teal-50/80 dark:bg-teal-900/15"
+                      style={{ width: STICKY_W, height: ROW_H }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Radio className="w-3 h-3 text-[#FF8200] flex-shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate leading-none">
+                            {selectedPgData.pgName}
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
+                            {selectedPgData.address}
+                            {selectedPgData.status !== "ok" && (
+                              <span className="ml-1 text-amber-500">
+                                {selectedPgData.status === "no-auth" ? "· no credentials" : "· could not read"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    {visibleChannels.map(ch => {
+                      const active = selectedPgData.activeChannels.includes(ch);
+                      return (
                         <td
-                          className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
-                          style={{ width: STICKY_W, height: ROW_H }}
+                          key={ch}
+                          className="border-r border-b border-slate-200 dark:border-slate-700 p-0"
+                          style={{ width: COL_W, height: ROW_H }}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Lock className="w-3 h-3 text-slate-300 dark:text-slate-600 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 truncate leading-none">
-                                {receiver.label}
-                              </div>
-                              <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
-                                {receiver.ipAddress}
-                              </div>
-                            </div>
+                          <div className="flex items-center justify-center h-full">
+                            {selectedPgData.status !== "ok" ? (
+                              <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700/60" />
+                            ) : active ? (
+                              <span className="w-4 h-4 rounded-sm bg-[#FF8200] shadow-sm" title={`PG sending on CH ${ch}`} />
+                            ) : (
+                              <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700" />
+                            )}
                           </div>
                         </td>
-                        {visibleChannels.map(ch => (
-                          <td key={ch} className="border-r border-b border-slate-200 dark:border-slate-700 p-0" style={{ width: COL_W, height: ROW_H }}>
+                      );
+                    })}
+                  </tr>
+                )}
+
+                {/* Receiver rows */}
+                {credentialedReceivers.map((receiver, rowIdx) => {
+                  const subscribed = new Set(matrix[receiver.speakerId] ?? []);
+                  const isEven = rowIdx % 2 === 0;
+                  const rowBg = isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/40";
+
+                  return (
+                    <tr key={receiver.speakerId} className={rowBg} style={{ height: ROW_H }}>
+                      <td
+                        className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
+                        style={{ width: STICKY_W, height: ROW_H }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {receiver.syncFailed && (
+                            <AlertCircle className="w-3 h-3 text-amber-400 flex-shrink-0" title="Could not read from device — edit manually" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate leading-none">
+                              {receiver.label}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
+                              {receiver.ipAddress}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      {visibleChannels.map(ch => {
+                        const active = subscribed.has(ch);
+                        return (
+                          <td
+                            key={ch}
+                            className="border-r border-b border-slate-200 dark:border-slate-700 p-0 cursor-pointer hover:bg-orange-200/70 dark:hover:bg-orange-800/40 transition-colors"
+                            style={{ width: COL_W, height: ROW_H }}
+                            onClick={() => toggleCell(receiver.speakerId, ch)}
+                            title={`${receiver.label} — CH ${ch} — click to ${active ? "unsubscribe" : "subscribe"}`}
+                          >
                             <div className="flex items-center justify-center h-full">
-                              <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700 block" />
+                              {active ? (
+                                <span className="w-4 h-4 rounded-sm bg-teal-500 shadow-sm shadow-teal-200 dark:shadow-none block" />
+                              ) : (
+                                <span className="w-4 h-4 rounded-sm border border-slate-200 dark:border-slate-700 block" />
+                              )}
                             </div>
                           </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+
+                {/* No-auth receiver rows — faded/locked */}
+                {noAuthReceivers.map((receiver, rowIdx) => {
+                  const isEven = (credentialedReceivers.length + rowIdx) % 2 === 0;
+                  const rowBg = isEven ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-800/40";
+                  return (
+                    <tr key={receiver.speakerId} className={`${rowBg} opacity-40`} style={{ height: ROW_H }}>
+                      <td
+                        className={`sticky left-0 z-10 border-r border-b border-slate-200 dark:border-slate-700 px-3 ${rowBg}`}
+                        style={{ width: STICKY_W, height: ROW_H }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Lock className="w-3 h-3 text-slate-300 dark:text-slate-600 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 truncate leading-none">
+                              {receiver.label}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none truncate">
+                              {receiver.ipAddress}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      {visibleChannels.map(ch => (
+                        <td key={ch} className="border-r border-b border-slate-200 dark:border-slate-700 p-0" style={{ width: COL_W, height: ROW_H }}>
+                          <div className="flex items-center justify-center h-full">
+                            <span className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-700 block" />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+
+                {credentialedReceivers.length === 0 && !selectedPgData && (
+                  <tr>
+                    <td colSpan={visibleChannels.length + 1} className="text-center py-10 text-xs text-slate-400">
+                      No receiver devices or PG gateways to display. Add contacts with credentials.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {/* Legend */}
           <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center gap-5 flex-wrap text-[10px] text-slate-500">
             <span className="font-semibold uppercase tracking-wide text-slate-400 text-[9px]">Legend</span>
             <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-teal-500" />Subscribed
+              <span className="w-3 h-3 rounded-sm bg-[#FF8200]" />PG active channel
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-teal-500" />Receiver subscribed
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm border border-slate-200 dark:border-slate-600" />Not subscribed
@@ -502,10 +600,7 @@ export default function MultiManagement() {
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-700" />No credentials
             </span>
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <AlertCircle className="w-3 h-3 text-amber-400" />Could not read — edit manually
-            </span>
-            <span className="ml-auto text-[10px] text-slate-400">Click any cell to toggle · Push to apply</span>
+            <span className="ml-auto text-[10px] text-slate-400">Click any receiver cell to toggle · Push to apply</span>
           </div>
         </div>
       )}

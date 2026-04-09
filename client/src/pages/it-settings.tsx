@@ -571,6 +571,27 @@ export default function ItSettingsPage() {
                         className={INPUT_CLS}
                       />
                     </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Username" hint="For Multi-Management config sync">
+                        <input
+                          data-testid={`input-pg-username-${gw.id}`}
+                          value={gw.username ?? ""}
+                          onChange={(e) => updatePgGateway(gw.id, "username", e.target.value)}
+                          placeholder="admin"
+                          className={INPUT_CLS}
+                        />
+                      </Field>
+                      <Field label="Password" hint="For Multi-Management config sync">
+                        <input
+                          data-testid={`input-pg-password-${gw.id}`}
+                          type="password"
+                          value={gw.password ?? ""}
+                          onChange={(e) => updatePgGateway(gw.id, "password", e.target.value)}
+                          placeholder="••••••••"
+                          className={INPUT_CLS}
+                        />
+                      </Field>
+                    </div>
                   </div>
                 ))}
 
