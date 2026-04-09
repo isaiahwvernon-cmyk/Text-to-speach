@@ -49,6 +49,11 @@ Key features:
   - Paging Gateway (PG) routing for multicast zone paging
   - Multiple configurable paging gateways
   - Contact-based routing with per-user assignments
+  - Multi-Management: Multicast Channel Matrix for syncing and managing
+    receiver channel subscriptions across all PG zones and devices
+    — syncs channel names, multicast IPs, and active states from PG config;
+    reads terminal names directly from each receiver device;
+    push updated subscription state back to receivers in one action
   - Global Priority Presets — pre-generated announcements with priority playback
   - Bilingual announcements (two languages in one seamless audio clip)
   - Full audit logging of all system activity
@@ -63,8 +68,9 @@ TOA's publicly documented HTTP API.
 --------------------------------------------------------------------------------
 TOA SPEAKER API — THIRD-PARTY HARDWARE NOTES
 --------------------------------------------------------------------------------
-This software communicates with TOA IP-A1 series speakers using their built-in
-HTTP REST API with HTTP Digest Authentication (RFC 2617).
+This software communicates with TOA IP-A1 series speakers and Paging Gateways
+using their built-in HTTP REST API with HTTP Digest Authentication (RFC 2617)
+and HTTP Basic Authentication as a fallback.
 
 The TOA IP-A1 API documentation and technical manuals are available from:
 
@@ -91,15 +97,16 @@ refer to the IP-A1 series installation and technical manual, which documents:
   - Mute control commands
   - System information endpoints
   - Firmware and model information endpoints
+  - Multicast send/receive channel configuration endpoints
 
 WHAT THIS SOFTWARE DOES WITH THE TOA API:
   This application acts as an HTTP proxy. The Node.js server receives requests
   from browsers (which cannot perform Digest Authentication natively) and
-  forwards them to the speaker hardware with proper Digest Auth headers.
+  forwards them to the speaker hardware with proper Digest/Basic Auth headers.
   No data is modified in transit. No data is sent to any external server.
   All communication stays within the local network.
 
-API ENDPOINTS USED (base URL: http://<speaker_ip>):
+SPEAKER VOLUME/MUTE API ENDPOINTS USED (base URL: http://<speaker_ip>):
   GET /api/v2/volume/get_master            — Read current volume
   GET /api/v2/volume/set_master?volume=N   — Set volume (N = 0 to 61)
   GET /api/v2/volume/inc_master            — Increment volume
@@ -107,7 +114,24 @@ API ENDPOINTS USED (base URL: http://<speaker_ip>):
   GET /api/v2/volume/get_master_mute       — Read mute state
   GET /api/v2/volume/set_master_mute?mute_state=mute   — Mute
   GET /api/v2/volume/set_master_mute?mute_state=unmute — Unmute
-  GET /api/v2/firmware/model               — Read model information
+  GET /api/v2/firmware/model               — Read model + terminal name
+
+MULTICAST CHANNEL MATRIX API ENDPOINTS USED (base URL: http://<receiver_ip>):
+  GET /api/v2/multicast/get_receive_channels
+    — Read which multicast channels this receiver is subscribed to
+    — Returns: enable1..enableN (on/off per channel)
+  GET /api/v2/multicast/set_receive_channels?enable1=on&enable2=off&...
+    — Write updated channel subscription state to the receiver
+
+PAGING GATEWAY CONFIG API ENDPOINTS USED (base URL: http://<pg_ip>):
+  GET /api/v2/config/download
+    — Downloads the PG configuration file
+    — Parsed for: multi_send_nameN (channel names),
+                  multi_send_ipN (multicast IPs),
+                  conv_sip_enableN (active state per channel)
+    — Authenticated via HTTP Digest or Basic Auth using configured credentials
+  GET /api/v2/firmware/model
+    — Reads PG terminal name
 
 
 --------------------------------------------------------------------------------
@@ -250,6 +274,7 @@ Areas where contributions are especially valuable:
   - Better offline/PWA support (service worker caching)
   - Volume scheduling (set volume automatically at certain times)
   - SIP PBX integration for enterprise deployments
+  - Extended multicast matrix features (channel reordering, bulk assign)
 
 
 --------------------------------------------------------------------------------
@@ -257,7 +282,8 @@ SECURITY NOTES
 --------------------------------------------------------------------------------
 This software is designed for CLOSED LAN use only.
 
-  - Speaker passwords are stored in plain text in rooms.json
+  - Speaker passwords and PG Gateway credentials are stored in plain text
+    in rooms.json and settings.json respectively
   - User passwords are stored as bcrypt hashes in users.json
   - JWT tokens are signed with a secret stored in the server process
   - There is no HTTPS / TLS encryption (plain HTTP over LAN)
@@ -268,7 +294,7 @@ These are acceptable trade-offs for an internal network tool.
 DO NOT:
   - Expose this server to the public internet
   - Use it over an untrusted VPN connection
-  - Store sensitive credentials beyond speaker login credentials
+  - Store sensitive credentials beyond speaker/gateway login credentials
 
 If your site requires higher security:
   - Place the server behind a reverse proxy with HTTPS (e.g. nginx + Let's Encrypt)

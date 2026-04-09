@@ -2,7 +2,7 @@
   IV VoxNova — IP-A1 CONTROL + TTS PAGING SYSTEM
   DEVELOPER DOCUMENTATION
 ================================================================================
-Version: 2.0
+Version: 2.1
 Language: TypeScript (full-stack) + Python (TTS)
 License: See OPEN_SOURCE.txt
 
@@ -25,13 +25,14 @@ TABLE OF CONTENTS
 13. Global Priority Presets
 14. Bilingual Announcements
 15. Speaker API (TOA IP-A1 HTTP Interface)
-16. Frontend (React)
-17. Configuration & Storage Files
-18. Production Build & start.bat
-19. Development Mode
-20. Environment Variables
-21. Common Issues & Debugging
-22. Extending the App
+16. Multi-Management — Multicast Channel Matrix
+17. Frontend (React)
+18. Configuration & Storage Files
+19. Production Build & start.bat
+20. Development Mode
+21. Environment Variables
+22. Common Issues & Debugging
+23. Extending the App
 
 
 --------------------------------------------------------------------------------
@@ -47,6 +48,9 @@ Node.js host) on a local area network (LAN). It provides:
   - Global Priority Presets: pre-generated audio that plays with priority
   - Bilingual announcements: two languages joined into one seamless WAV
   - A TTS queue so multiple users can send concurrently without collisions
+  - Multi-Management: a Multicast Channel Matrix for reading and writing
+    receiver channel subscriptions across all PG zones — syncs from live
+    devices, lets IT toggle subscriptions, and pushes changes back in bulk
   - Full audit logging of all system activity
 
 The server runs on port 5000. Any phone, tablet, or browser on the same network
@@ -79,49 +83,50 @@ Speaker hardware:
 3. PROJECT STRUCTURE
 --------------------------------------------------------------------------------
   /
-  ├── client/                     React frontend (Vite)
-  │   ├── index.html              HTML shell + favicon/PWA meta
+  ├── client/                       React frontend (Vite)
+  │   ├── index.html                HTML shell + favicon/PWA meta
   │   ├── public/
-  │   │   └── favicon.png         App icon (also used as Apple touch icon)
+  │   │   └── favicon.png           App icon (also used as Apple touch icon)
   │   └── src/
-  │       ├── main.tsx            React entry point
-  │       ├── App.tsx             Router (wouter)
+  │       ├── main.tsx              React entry point
+  │       ├── App.tsx               Router (wouter)
   │       ├── context/
-  │       │   └── AuthContext.tsx JWT auth context + provider
+  │       │   └── AuthContext.tsx   JWT auth context + provider
   │       ├── pages/
-  │       │   ├── home.tsx        Main TTS + volume control UI
-  │       │   ├── admin.tsx       Admin panel (users, contacts, presets)
-  │       │   ├── it-settings.tsx IT settings (gateways, TTS, logging)
-  │       │   └── login.tsx       Login page
-  │       ├── components/ui/      shadcn/ui component library
-  │       ├── hooks/              use-toast, etc.
+  │       │   ├── home.tsx          Main TTS + volume control UI
+  │       │   ├── admin.tsx         Admin panel (users, contacts, presets)
+  │       │   ├── it-settings.tsx   IT settings (gateways, TTS, logging)
+  │       │   ├── multi-management.tsx  Multicast Channel Matrix
+  │       │   └── login.tsx         Login page
+  │       ├── components/ui/        shadcn/ui component library
+  │       ├── hooks/                use-toast, etc.
   │       └── lib/
-  │           ├── queryClient.ts  TanStack Query setup + apiRequest helper
-  │           └── auth.ts         apiFetch helper (adds JWT header)
+  │           ├── queryClient.ts    TanStack Query setup + apiRequest helper
+  │           └── auth.ts           apiFetch helper (adds JWT header)
   │
   ├── server/
-  │   ├── index.ts                Express entry point; detects LAN IP
-  │   ├── routes.ts               All API endpoints
-  │   ├── auth.ts                 JWT sign/verify + requireAuth middleware
-  │   ├── tts-engine.ts           Kokoro TTS subprocess wrapper
-  │   ├── tts-queue.ts            TTS job queue (FIFO, single worker)
-  │   ├── sip-sender.ts           SIP/RTP audio delivery via ffmpeg
-  │   └── kokoro_tts.py           Python TTS script (called as subprocess)
+  │   ├── index.ts                  Express entry point; detects LAN IP
+  │   ├── routes.ts                 All API endpoints
+  │   ├── auth.ts                   JWT sign/verify + requireAuth middleware
+  │   ├── tts-engine.ts             Kokoro TTS subprocess wrapper
+  │   ├── tts-queue.ts              TTS job queue (FIFO, single worker)
+  │   ├── sip-sender.ts             SIP/RTP audio delivery via ffmpeg
+  │   └── kokoro_tts.py             Python TTS script (called as subprocess)
   │
   ├── shared/
-  │   └── schema.ts               Shared Zod schemas + TypeScript types
+  │   └── schema.ts                 Shared Zod schemas + TypeScript types
   │
-  ├── data/                       Runtime data (auto-created)
-  │   ├── users.json              User accounts + hashed passwords
-  │   ├── settings.json           System settings
-  │   ├── logs.json               Audit log entries
-  │   └── presets/                Pre-generated WAV files for Global Presets
+  ├── data/                         Runtime data (auto-created)
+  │   ├── users.json                User accounts + hashed passwords
+  │   ├── settings.json             System settings
+  │   ├── logs.json                 Audit log entries
+  │   └── presets/                  Pre-generated WAV files for Global Presets
   │       └── <preset-id>.wav
   │
-  ├── rooms.json                  Contact/speaker configuration
-  ├── presets.json                Global Priority Presets metadata
-  ├── start.bat                   Windows launcher script
-  └── package.json                NPM scripts and dependencies
+  ├── rooms.json                    Contact/speaker configuration
+  ├── presets.json                  Global Priority Presets metadata
+  ├── start.bat                     Windows launcher script
+  └── package.json                  NPM scripts and dependencies
 
 
 --------------------------------------------------------------------------------
@@ -185,6 +190,28 @@ GLOBAL PRESET FLOW
      - Job bypasses the regular queue (preempts current playback if needed)
      - SIP sender is called directly with the pre-generated WAV
 
+MULTICAST CHANNEL MATRIX SYNC FLOW
+  1. IT clicks Sync on the Multi-Management page
+  2. GET /api/multi-management/sync
+  3. Server reads all configured PG Gateways from settings.json
+  4. For each PG Gateway:
+     a. Downloads config via GET /api/v2/config/download (Digest/Basic auth)
+        Parses: multi_send_nameN, multi_send_ipN, conv_sip_enableN
+     b. Reads terminal name via GET /api/v2/firmware/model
+  5. For each receiver (Direct SIP speaker in contacts):
+     a. Reads channel subscriptions: GET /api/v2/multicast/get_receive_channels
+     b. Reads terminal name: GET /api/v2/firmware/model
+  6. Returns combined matrix: pgData[], receivers[] with per-channel states
+  7. Frontend renders the matrix table
+
+MULTICAST CHANNEL MATRIX PUSH FLOW
+  1. IT toggles checkboxes in the matrix, then clicks Push
+  2. POST /api/multi-management/push  { receiverIp, username, password,
+                                        channels: { [ch]: boolean } }[]
+  3. Server calls GET /api/v2/multicast/set_receive_channels?enable1=on&...
+     on each receiver that has changes
+  4. Returns per-receiver success/failure results
+
 
 --------------------------------------------------------------------------------
 6. AUTHENTICATION & AUTHORIZATION
@@ -213,7 +240,8 @@ MIDDLEWARE: requireRole(...roles) (server/auth.ts)
 ROLES
   user      Standard user: can send TTS to assigned contacts only
   admin     Can manage users, contacts, and global presets
-  it        Full system access (settings, logging, backup/restore)
+  it        Full system access (settings, logging, backup/restore,
+            multi-management matrix)
   recovery  Emergency access only — intended for system recovery
 
 USERS.JSON FORMAT
@@ -242,8 +270,9 @@ SPEAKER
   id:         string    — Generated ID
   label:      string    — Human-readable name (e.g. "Front Speaker")
   ipAddress:  string    — Speaker's LAN IP (required)
-  username:   string    — HTTP Digest username (optional, for volume control)
-  password:   string    — HTTP Digest password (optional, for volume control)
+  username:   string    — HTTP Digest username (optional, for volume control
+                          and multicast matrix read/write)
+  password:   string    — HTTP Digest password (optional, same usage)
 
 CONTACT (rooms.json)
   id:         string    — Generated ID
@@ -254,6 +283,15 @@ CONTACT (rooms.json)
   pgId:       string?   — ID of the PG gateway to use (optional)
   codec:      "PCMU" | "PCMA" | "G722" | undefined  — override per-contact
   syncMode:   boolean   — true = sync all speakers (volume control)
+
+PG GATEWAY (inside SystemSettings.pgs[])
+  id:         string    — Generated ID
+  name:       string    — Display name (e.g. "Main Building PG")
+  ip:         string    — PG device's LAN IP address
+  port:       number    — SIP port (default 5060)
+  defaultExt: string    — Default DTMF zone extension
+  username:   string    — Username for config download (HTTP Digest/Basic auth)
+  password:   string    — Password for config download
 
 SYSTEM SETTINGS (settings.json)
   sip:        object    — SIP/RTP delivery settings
@@ -401,6 +439,26 @@ SPEAKER CONTROL (direct HTTP Digest proxy)
   POST /api/speaker/volume/increment  { ipAddress, username, password }
   POST /api/speaker/volume/decrement  { ipAddress, username, password }
   POST /api/speaker/mute/set   { ipAddress, username, password, mute_state }
+
+MULTI-MANAGEMENT (Multicast Channel Matrix)
+  GET  /api/multi-management/sync
+    Reads all PG Gateways (config download + terminal name) and all receivers
+    (channel subscriptions + terminal name) in parallel.
+    -> {
+         pgData: [{ pgId, pgName, pgIp, terminalName, channels: [
+           { channelId, name, multicastIp, active }
+         ]}],
+         receivers: [{ contactId, contactName, speakerId, speakerLabel,
+                       ipAddress, terminalName, channels: { [ch]: boolean } }]
+       }
+    Requires: IT role
+
+  POST /api/multi-management/push
+    Body: [{ ipAddress, username, password,
+             channels: { "1": true, "2": false, ... } }]
+    Calls set_receive_channels on each receiver.
+    -> [{ ipAddress, success: boolean, error?: string }]
+    Requires: IT role
 
 INFO
   GET  /api/info               -> { lanIP, port, url }  (for QR code page)
@@ -567,11 +625,11 @@ Base URL: http://<speaker_ip>/api/v2/
   GET /volume/set_master_mute?mute_state=mute     Mutes
   GET /volume/set_master_mute?mute_state=unmute   Unmutes
 
-  GET /firmware/model                 Returns model info
+  GET /firmware/model                 Returns model info + terminal_name
 
 Note: All TOA IP-A1 API calls use GET requests (not POST/PUT), even for writes.
 Speaker username and password are optional in IV VoxNova — omitting them
-disables volume/mute control but does not affect TTS audio delivery.
+disables volume/mute control and multicast matrix read/write for that speaker.
 
 DIGEST AUTH IMPLEMENTATION (server/routes.ts)
   The browser cannot perform HTTP Digest Auth natively. The Express server
@@ -584,7 +642,69 @@ DIGEST AUTH IMPLEMENTATION (server/routes.ts)
 
 
 --------------------------------------------------------------------------------
-16. FRONTEND (REACT)
+16. MULTI-MANAGEMENT — MULTICAST CHANNEL MATRIX
+--------------------------------------------------------------------------------
+File: client/src/pages/multi-management.tsx + server/routes.ts
+
+The Multi-Management page displays a scrollable matrix of receivers (rows) vs.
+multicast channels (columns). IT staff can see the live subscription state of
+every receiver, toggle subscriptions, and push changes back to devices.
+
+LAYOUT CONSTANTS
+  STICKY_W  = 200px   Left sticky column (zone/speaker info)
+  COL_W     = 56px    Per-channel column width
+  ROW_H     = 50px    Data row height
+  HEADER_H  = 148px   Column header height (rotated text)
+
+COLUMN HEADER RENDERING
+  Each column header uses CSS writing-mode: vertical-rl + transform: rotate(-180deg)
+  with flexDirection: column. This keeps all text within the cell bounds without
+  needing overflow: visible (which does not work reliably on table cells).
+  Each span is a separate vertical text "column":
+    - CH N  (bold, channel number)
+    - channel name (from PG config)
+    - multicast IP (monospace, from PG config)
+
+ZONE GROUPING
+  Receivers are grouped by contactId. Each group gets:
+    - A coloured left-border accent (teal/indigo/violet/amber/rose cycling)
+    - A group header row showing the contact/zone name + speaker count
+    - Individual rows per speaker within the zone
+
+PG ROW
+  The first row of the matrix is always the PG Gateway itself (orange accents).
+  Each cell shows an orange square if the PG is configured to send on that
+  channel (conv_sip_enableN = "1" in the PG config file).
+
+SYNC IMPLEMENTATION (GET /api/multi-management/sync)
+  Executed in parallel for each PG Gateway:
+    a. parsePgChannelData(pgIp, pgUsername, pgPassword):
+       - Downloads config via GET /api/v2/config/download
+       - Auth: tries HTTP Digest first (reads WWW-Authenticate, builds response)
+               falls back to HTTP Basic Auth if Digest is unavailable
+       - Parses key=value lines: multi_send_nameN, multi_send_ipN,
+         conv_sip_enableN (N = 1..20 by default)
+    b. GET /api/v2/firmware/model -> reads terminal_name for the PG row
+  Executed in parallel for each receiver (speaker in Direct SIP contacts):
+    a. GET /api/v2/multicast/get_receive_channels -> { enable1..enableN }
+    b. GET /api/v2/firmware/model -> terminal_name
+    c. Assembles per-channel boolean map: { "1": true, "2": false, ... }
+
+PUSH IMPLEMENTATION (POST /api/multi-management/push)
+  Body: array of receiver objects, each with updated channel booleans.
+  For each receiver, constructs query string:
+    ?enable1=on&enable2=off&enable3=on&...
+  Calls GET /api/v2/multicast/set_receive_channels?<query> using Digest auth.
+  Returns per-receiver result: { ipAddress, success, error? }
+
+ALL/ACTIVE FILTER
+  The "All" / "Active" toggle above the matrix filters columns:
+    All:    show all 20 channels
+    Active: show only channels where conv_sip_enableN = "1" on the PG
+
+
+--------------------------------------------------------------------------------
+17. FRONTEND (REACT)
 --------------------------------------------------------------------------------
 Entry: client/src/main.tsx -> App.tsx
 
@@ -593,6 +713,7 @@ ROUTING (wouter)
   /home      -> Main TTS + volume control UI
   /admin     -> Admin panel (admin role only)
   /it        -> IT settings (it role only)
+  /multi     -> Multicast Channel Matrix (it role only)
   /connect   -> QR code connection page
 
 AUTH CONTEXT (client/src/context/AuthContext.tsx)
@@ -617,15 +738,27 @@ ADMIN PAGE (client/src/pages/admin.tsx)
 
 IT SETTINGS PAGE (client/src/pages/it-settings.tsx)
   - System status indicators (TTS engine, ffmpeg, paging gateway)
-  - Paging Gateway configuration (multiple gateways)
+  - Paging Gateway configuration (multiple gateways, each with username/password
+    for config download used by Multi-Management sync)
   - TTS engine settings (codec, delays, chime, voice speed)
   - Contacts export/import
   - Config export/import
   - System logging (view, export, clear, configure retention)
 
+MULTI-MANAGEMENT PAGE (client/src/pages/multi-management.tsx)
+  - Sticky left column (ZONE / SPEAKER header + receiver rows)
+  - Horizontally scrollable channel columns
+  - PG row at top with orange active-channel indicators
+  - Zone group header rows (coloured left borders)
+  - Per-receiver rows with terminal name, speaker label, IP
+  - Toggleable cells (click to subscribe/unsubscribe)
+  - All / Active filter toggle
+  - Sync button: fetches live state from all devices
+  - Push button: applies pending changes to receivers
+
 
 --------------------------------------------------------------------------------
-17. CONFIGURATION & STORAGE FILES
+18. CONFIGURATION & STORAGE FILES
 --------------------------------------------------------------------------------
 All files are auto-created with safe defaults on first run.
 
@@ -642,7 +775,8 @@ data/users.json
   Written by: POST/PUT/DELETE /api/users
 
 data/settings.json
-  Single SystemSettings object.
+  Single SystemSettings object. Now includes pgs[].username and pgs[].password
+  for PG Gateway config download authentication.
   Written by: PUT /api/settings
 
 data/logs.json
@@ -655,7 +789,7 @@ data/presets/<id>.wav
 
 
 --------------------------------------------------------------------------------
-18. PRODUCTION BUILD & start.bat
+19. PRODUCTION BUILD & start.bat
 --------------------------------------------------------------------------------
 start.bat (Windows launcher):
   1. Checks for Node.js in PATH
@@ -694,7 +828,7 @@ Production vs Development:
 
 
 --------------------------------------------------------------------------------
-19. DEVELOPMENT MODE
+20. DEVELOPMENT MODE
 --------------------------------------------------------------------------------
 npm run dev
   Starts tsx running server/index.ts in development mode.
@@ -709,7 +843,7 @@ will show "Unavailable" in the dev environment — this is expected and normal.
 
 
 --------------------------------------------------------------------------------
-20. ENVIRONMENT VARIABLES
+21. ENVIRONMENT VARIABLES
 --------------------------------------------------------------------------------
   PORT            Server port (default: 5000)
   NODE_ENV        "development" or "production"
@@ -720,7 +854,7 @@ For production deployments, set JWT_SECRET to a strong random value.
 
 
 --------------------------------------------------------------------------------
-21. COMMON ISSUES & DEBUGGING
+22. COMMON ISSUES & DEBUGGING
 --------------------------------------------------------------------------------
 ISSUE: TTS status shows "Unavailable"
   FIX: Ensure Python 3.12 is installed and in PATH.
@@ -765,9 +899,30 @@ ISSUE: Admin password modal doesn't grey out the page properly
   FIX: Modal backdrop uses z-[200] which is above the sticky header (z-40).
        If this breaks after UI changes, ensure z-[200] is maintained.
 
+ISSUE: Multi-Management Sync returns empty pgData / no channel names
+  FIX: Go to IT Settings -> Paging Gateways, enter a Username and Password
+       for the gateway. The config download uses these for Digest/Basic auth.
+       Without credentials, the config file download will return 401.
+
+ISSUE: Multi-Management matrix shows all grey cells ("no credentials")
+  FIX: Ensure speakers in Direct SIP contacts have username and password set.
+       Edit the contact in Admin -> Contacts and fill in both fields.
+
+ISSUE: Push fails on some receivers
+  FIX: Verify the receiver IP is reachable from the server PC.
+       Check the username/password are correct for that device.
+       Look at the error field in the Push response for per-receiver details.
+
+ISSUE: Column header text clipped in Multi-Management matrix
+  NOTE: Column headers use writing-mode: vertical-rl + rotate(-180deg) with
+        flex-direction: column. This is intentional — it keeps content within
+        the table cell without needing overflow: visible (which table cells
+        do not reliably support). If text appears clipped, check that the
+        HEADER_H constant (148px) is not being overridden by global CSS.
+
 
 --------------------------------------------------------------------------------
-22. EXTENDING THE APP
+23. EXTENDING THE APP
 --------------------------------------------------------------------------------
 ADDING A NEW TTS LANGUAGE
   1. Verify the language is supported by the installed Kokoro version
@@ -797,6 +952,16 @@ ADDING A NEW API ENDPOINT
 CHANGING THE PORT
   Set the PORT environment variable before starting the server.
   The default is 5000. The QR code and /api/info update automatically.
+
+EXTENDING THE MULTICAST CHANNEL MATRIX
+  - To support more than 20 channels: increase the channel count constant
+    in both parsePgChannelData() (server/routes.ts) and the channel loop
+    in the Sync route. The matrix renders dynamically based on channel count.
+  - To add bulk-assign (select all channels for a receiver): add a row-level
+    toggle that sets all channel booleans for that receiver.
+  - To support multiple PGs in the matrix simultaneously: the Sync response
+    already returns pgData[] as an array; extend the matrix header to show
+    one PG row per gateway.
 
 
 ================================================================================

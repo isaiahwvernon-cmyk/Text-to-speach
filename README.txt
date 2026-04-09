@@ -4,8 +4,9 @@
 A self-hosted web application for controlling TOA IP-A1 series network speakers
 and sending Text-to-Speech announcements over your local network. Supports
 role-based access (User / Admin / IT / Recovery), multi-zone paging via Paging
-Gateways, direct SIP speaker routing, Global Priority Presets, and bilingual
-announcements.
+Gateways, direct SIP speaker routing, a full Multicast Channel Matrix for
+managing receiver subscriptions across all PG channels, Global Priority Presets,
+and bilingual announcements.
 
 
 --------------------------------------------------------------------------------
@@ -79,6 +80,10 @@ FEATURES
     with higher priority than regular TTS, interrupting any current playback
   - Direct SIP routing: send audio directly to IP-A1 speaker IP addresses
   - PG Gateway routing: route audio through Paging Gateways to multicast zones
+  - Multi-Management: full Multicast Channel Matrix — sync receiver channel
+    subscriptions from all PG receivers on the network, view and edit which
+    channels each receiver is subscribed to, and push changes back to devices
+    in one click; PG active channels are highlighted; zone grouping by contact
   - Volume & mute control: full speaker volume management from any browser
   - Contacts: admin/IT create named contacts (zones/rooms) assigned to users
   - Personal TTS presets: save frequently used announcement texts for users
@@ -108,23 +113,23 @@ ARCHITECTURE
 FOLDER STRUCTURE
 --------------------------------------------------------------------------------
   /
-  ├── client/           React frontend (Vite)
-  ├── server/           Express backend
-  │   ├── routes.ts     All API endpoints
-  │   ├── tts-engine.ts Kokoro TTS integration
-  │   ├── tts-queue.ts  TTS job queue
-  │   ├── sip-sender.ts SIP/RTP audio delivery
-  │   └── kokoro_tts.py Python TTS script
+  ├── client/              React frontend (Vite)
+  ├── server/              Express backend
+  │   ├── routes.ts        All API endpoints
+  │   ├── tts-engine.ts    Kokoro TTS integration
+  │   ├── tts-queue.ts     TTS job queue
+  │   ├── sip-sender.ts    SIP/RTP audio delivery
+  │   └── kokoro_tts.py    Python TTS script
   ├── shared/
-  │   └── schema.ts     Shared TypeScript types + Zod schemas
+  │   └── schema.ts        Shared TypeScript types + Zod schemas
   ├── data/
-  │   ├── users.json    User accounts (auto-created)
-  │   ├── rooms.json    Contacts/speaker config (auto-created)
-  │   ├── settings.json System settings (auto-created)
-  │   ├── logs.json     System log (auto-created)
-  │   └── presets/      Pre-generated audio files for Global Presets
-  ├── start.bat         Windows launcher
-  └── README.txt        This file
+  │   ├── users.json       User accounts (auto-created)
+  │   ├── rooms.json       Contacts/speaker config (auto-created)
+  │   ├── settings.json    System settings (auto-created)
+  │   ├── logs.json        System log (auto-created)
+  │   └── presets/         Pre-generated audio files for Global Presets
+  ├── start.bat            Windows launcher
+  └── README.txt           This file
 
 
 --------------------------------------------------------------------------------

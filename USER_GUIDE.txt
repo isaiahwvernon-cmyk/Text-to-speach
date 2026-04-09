@@ -18,6 +18,8 @@ IV VoxNova is a web-based control system that lets you:
     instantly and interrupt any currently playing audio
   - Control the volume and mute state of TOA IP-A1 ceiling speakers
   - Manage paging zones and contacts across your building or campus
+  - Use the Multicast Channel Matrix (IT/Admin) to view and manage which
+    channels each receiver is subscribed to across the whole network
 
 It runs on a Windows PC connected to your network. Once started, anyone on the
 same Wi-Fi can open it in their browser — no app install required.
@@ -316,6 +318,8 @@ PAGING GATEWAYS:
     - IP Address (the device's network address)
     - SIP Port (default 5060)
     - Default Zone Extension (used when a contact doesn't specify one)
+    - Username / Password (used to download the PG configuration file for
+      the Multicast Channel Matrix — leave blank if not needed)
 
   You can add multiple gateways for different areas of your facility.
   Contacts are then assigned to a specific gateway.
@@ -354,6 +358,64 @@ IF TTS IS NOT WORKING:
       Fix: Open Command Prompt -> type:  pip install kokoro soundfile
     - ffmpeg is not in PATH
       Fix: Download ffmpeg, add its bin folder to the Windows PATH
+
+
+--------------------------------------------------------------------------------
+MULTI-MANAGEMENT — MULTICAST CHANNEL MATRIX
+--------------------------------------------------------------------------------
+(For IT accounts only — accessed via the grid icon in the header)
+
+The Multi-Management page gives IT staff a complete view of which multicast
+channels every receiver on the network is subscribed to. It looks like a
+spreadsheet with receivers as rows and channels as columns.
+
+WHAT YOU SEE IN THE MATRIX:
+  - Top header row: each column = one multicast channel (CH 1, CH 2, etc.)
+    The column header shows the channel number, channel name, and multicast IP
+    address, read from the Paging Gateway configuration file.
+  - PG Gateway row (orange): shows which channels are active on the gateway
+    itself (i.e. which channels the PG is configured to send on).
+  - Zone groups (coloured borders): receivers are grouped by zone/contact.
+    Each row shows the receiver's terminal name (read from the device),
+    the speaker label (from Contacts), and the IP address.
+  - Coloured squares in each cell:
+      Orange square  = PG active channel (the PG is sending on this channel)
+      Teal square    = receiver is subscribed to this channel
+      Empty box      = receiver is not subscribed
+      Grey with X    = no credentials — cannot read this receiver's state
+
+  You can filter to show ALL channels or only ACTIVE channels (ones where
+  the PG is currently sending).
+
+HOW TO SYNC:
+  1. Click the "Sync" button (top right of the matrix)
+  2. IV VoxNova will contact each receiver on the network and read its current
+     channel subscriptions, and contact the PG Gateway to read the channel
+     configuration (names, IPs, active states) and PG terminal name
+  3. The matrix updates to reflect the live state of all devices
+  4. The "Last synced" time updates in the header
+
+HOW TO EDIT SUBSCRIPTIONS:
+  - Click any teal or empty square in a receiver row to toggle it
+    (subscribed <-> not subscribed)
+  - Changes are shown visually but NOT sent to the device yet
+  - When you are happy with your changes, click "Push"
+
+HOW TO PUSH CHANGES:
+  1. After toggling channel subscriptions, click the orange "Push" button
+  2. IV VoxNova sends the updated subscription state to each receiver that
+     has changes
+  3. Receivers update their multicast channel configuration in real time
+  4. A confirmation appears when the push is complete
+
+NOTES:
+  - Receivers with no credentials configured (grey cells) cannot be read
+    or written — configure the receiver's username and password in Contacts
+  - PG Gateway credentials for config download are configured in
+    IT Settings -> Paging Gateways
+  - The matrix is read-only for receivers that cannot be reached on the network
+  - Changes are not applied until you click Push — syncing again will reset
+    any unsaved toggles back to the device's actual state
 
 
 --------------------------------------------------------------------------------
@@ -410,6 +472,26 @@ PROBLEM: Volume control shows red dot / not connecting
     - Ensure username and password are correct (default is admin/admin)
     - Volume control requires the speaker to be a Direct SIP contact
 
+PROBLEM: Multi-Management matrix shows grey cells / "No credentials"
+  SOLUTION:
+    - Open Admin -> Contacts, find the contact for that receiver
+    - Edit the speaker entry and enter the Username and Password for the device
+    - Click Save, then Sync again in Multi-Management
+
+PROBLEM: Multi-Management Sync shows no channel names or IPs in column headers
+  SOLUTION:
+    - Go to IT Settings -> Paging Gateways
+    - Make sure the PG Gateway has a Username and Password entered
+    - These credentials are used to download the PG configuration file
+    - Click Save in IT Settings, then Sync again in Multi-Management
+
+PROBLEM: Push button does nothing / receivers don't update
+  SOLUTION:
+    - Ensure the receiver IP addresses are correct in Contacts
+    - Ensure receiver credentials are entered (username/password in Contacts)
+    - Verify the receivers are powered on and reachable from the server PC
+    - Check IT Settings -> Logs for any error messages after a Push
+
 
 --------------------------------------------------------------------------------
 QUICK REFERENCE CARD
@@ -425,6 +507,10 @@ VOLUME CONTROL:         Select Direct SIP contact -> use slider or +/- buttons
 MUTE:                   Tap Mute to silence (volume is remembered on unmute)
 ADMIN PANEL:            Manage users, contacts, and presets (Admin role only)
 IT SETTINGS:            Configure gateways, TTS engine, logging (IT role only)
+MULTI-MANAGEMENT:       View/edit multicast channel matrix (IT role only)
+                          -> Sync to read live state from all devices
+                          -> Toggle cells to change subscriptions
+                          -> Push to apply changes to receivers
 DEFAULT ADMIN:          admin / admin
 DEFAULT IT:             it / it1234
 
